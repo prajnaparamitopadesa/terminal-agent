@@ -1,0 +1,24 @@
+export interface Server {
+  id: number
+  name?: string
+  username: string
+  host: string
+  port: number
+  terminal_type: string
+  created_at: string
+}
+
+export interface AutoApproval {
+  id: number
+  pattern: string
+  is_regex: number
+  description?: string
+  scope: string
+  server_id?: number
+  created_at: string
+}
+
+export interface ApprovalRequest {
+  id: string
+  command: string
+}
