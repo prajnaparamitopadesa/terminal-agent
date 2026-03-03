@@ -10,7 +10,7 @@ export default function ServerList() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    fetch('/api/servers').then(r => r.json()).then(setServers)
+    fetch('/api/servers').then(r => r.json()).then(setServers).catch(console.error)
   }, [])
 
   const handleAdd = async (e: React.FormEvent) => {

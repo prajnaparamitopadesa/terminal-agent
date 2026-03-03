@@ -7,14 +7,14 @@ interface Props {
   serverId: number
 }
 
-export default function AutoApprovalManager({ onClose, serverId: _serverId }: Props) {
+export default function AutoApprovalManager({ onClose, serverId }: Props) {
   const [approvals, setApprovals] = useState<AutoApproval[]>([])
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ pattern: '', is_regex: false, description: '', scope: 'global' })
 
   useEffect(() => {
-    fetch('/api/auto-approvals').then(r => r.json()).then(setApprovals)
-  }, [])
+    fetch(`/api/auto-approvals?serverId=${serverId}`).then(r => r.json()).then(setApprovals).catch(console.error)
+  }, [serverId])
 
   const handleDelete = async (id: number) => {
     await fetch(`/api/auto-approvals/${id}`, { method: 'DELETE' })

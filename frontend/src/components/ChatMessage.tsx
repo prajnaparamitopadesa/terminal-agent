@@ -46,11 +46,15 @@ function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
   }
 
   const sendToTerminal = async () => {
-    await fetch(`/api/agent/${sessionId}/send-to-terminal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
-    }).catch(() => {})
+    try {
+      await fetch(`/api/agent/${sessionId}/send-to-terminal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      })
+    } catch {
+      console.error('Failed to send command to terminal')
+    }
   }
 
   const addGlobalApproval = async (scope: string) => {
