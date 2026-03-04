@@ -49,21 +49,21 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
       <div className="bg-gray-900 border border-gray-700 rounded-xl w-[500px] p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-white">Allow Command</h3>
+          <h3 className="font-semibold text-white">允许命令</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
         
         <div className="mb-4">
-          <label className="block text-sm text-gray-400 mb-1">Original Command</label>
+          <label className="block text-sm text-gray-400 mb-1">原始命令</label>
           <div className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 font-mono text-sm text-green-300">
             {command}
           </div>
         </div>
         
         <div className="mb-4">
-          <label className="block text-sm text-gray-400 mb-1">Command Pattern</label>
+          <label className="block text-sm text-gray-400 mb-1">命令匹配规则</label>
           <input
             value={pattern}
             onChange={e => setPattern(e.target.value)}
@@ -76,17 +76,17 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
               onChange={e => setIsRegex(e.target.checked)}
               className="rounded"
             />
-            <span className="text-sm text-gray-400">Regular Expression</span>
+            <span className="text-sm text-gray-400">正则表达式</span>
           </label>
         </div>
         
         <div className="mb-4">
-          <label className="block text-sm text-gray-400 mb-1">Requirement (for regex conversion)</label>
+          <label className="block text-sm text-gray-400 mb-1">描述（用于生成正则）</label>
           <div className="flex gap-2">
             <input
               value={requirement}
               onChange={e => setRequirement(e.target.value)}
-              placeholder="e.g. Match any ls command with flags"
+              placeholder="例如：匹配任意带参数的 ls 命令"
               className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
             />
             <button
@@ -95,13 +95,13 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
               className="flex items-center gap-1 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              {converting ? 'Converting...' : 'To Regex'}
+              {converting ? '转换中...' : '转为正则'}
             </button>
           </div>
         </div>
         
         <div className="mb-6">
-          <label className="block text-sm text-gray-400 mb-2">Scope</label>
+          <label className="block text-sm text-gray-400 mb-2">生效范围</label>
           <div className="flex gap-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -110,7 +110,7 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
                 checked={scope === 'global'}
                 onChange={() => setScope('global')}
               />
-              <span className="text-sm text-gray-300">All servers</span>
+              <span className="text-sm text-gray-300">所有服务器</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -119,20 +119,20 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
                 checked={scope === 'server'}
                 onChange={() => setScope('server')}
               />
-              <span className="text-sm text-gray-300">This server only</span>
+              <span className="text-sm text-gray-300">仅此服务器</span>
             </label>
           </div>
         </div>
         
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">
-            Cancel
+            取消
           </button>
           <button
             onClick={handleSave}
             className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg transition-colors"
           >
-            Save
+            保存
           </button>
         </div>
       </div>

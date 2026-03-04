@@ -10,16 +10,20 @@ interface Props {
   server: Server
   sessionId: string
   onScreenContent: (getter: () => string) => void
+  onPasswordSaved?: (password: string) => void
 }
 
-export default function TerminalPanel({ server, sessionId, onScreenContent }: Props) {
+export default function TerminalPanel({ server, sessionId, onScreenContent, onPasswordSaved }: Props) {
   const termRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
-  const [password, setPassword] = useState('')
+  const storageKey = `saved_pwd_${server?.id}`
+  const savedPwd = server?.id ? (localStorage.getItem(storageKey) || '') : ''
+  const [password, setPassword] = useState(savedPwd)
+  const [rememberPassword, setRememberPassword] = useState(!!savedPwd)
   const [showPasswordInput, setShowPasswordInput] = useState(true)
   const screenBufferRef = useRef<string>('')
 
@@ -84,6 +88,13 @@ export default function TerminalPanel({ server, sessionId, onScreenContent }: Pr
     setConnecting(true)
     setShowPasswordInput(false)
 
+    if (rememberPassword) {
+      localStorage.setItem(storageKey, pwd)
+      onPasswordSaved?.(pwd)
+    } else {
+      localStorage.removeItem(storageKey)
+    }
+
     const ws = new WebSocket(`ws://localhost:3001/ws/terminal/${sessionId}`)
     wsRef.current = ws
 
@@ -111,11 +122,11 @@ export default function TerminalPanel({ server, sessionId, onScreenContent }: Pr
           setConnecting(false)
         }
       } else if (msg.type === 'error') {
-        xtermRef.current?.write(`\r\n\x1b[31mError: ${msg.error}\x1b[0m\r\n`)
+        xtermRef.current?.write(`\r\n\x1b[31m错误: ${msg.error}\x1b[0m\r\n`)
         setConnecting(false)
         setShowPasswordInput(true)
       } else if (msg.type === 'close') {
-        xtermRef.current?.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n')
+        xtermRef.current?.write('\r\n\x1b[33m连接已关闭。\x1b[0m\r\n')
         setConnected(false)
       }
     }
@@ -132,11 +143,11 @@ export default function TerminalPanel({ server, sessionId, onScreenContent }: Pr
         <span className="text-xs text-gray-400 font-mono">{server?.username}@{server?.host}</span>
         <div className="flex items-center gap-1.5">
           {connected ? (
-            <><Wifi className="w-3 h-3 text-green-400" /><span className="text-xs text-green-400">Connected</span></>
+            <><Wifi className="w-3 h-3 text-green-400" /><span className="text-xs text-green-400">已连接</span></>
           ) : connecting ? (
-            <><div className="w-3 h-3 border border-yellow-400 border-t-transparent rounded-full animate-spin" /><span className="text-xs text-yellow-400">Connecting...</span></>
+            <><div className="w-3 h-3 border border-yellow-400 border-t-transparent rounded-full animate-spin" /><span className="text-xs text-yellow-400">连接中...</span></>
           ) : (
-            <><WifiOff className="w-3 h-3 text-red-400" /><span className="text-xs text-red-400">Disconnected</span></>
+            <><WifiOff className="w-3 h-3 text-red-400" /><span className="text-xs text-red-400">未连接</span></>
           )}
         </div>
       </div>
@@ -146,27 +157,38 @@ export default function TerminalPanel({ server, sessionId, onScreenContent }: Pr
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80">
             <div className="flex items-center gap-2 mb-4">
               <Lock className="w-5 h-5 text-blue-400" />
-              <h3 className="font-semibold">SSH Connection</h3>
+              <h3 className="font-semibold">SSH 连接</h3>
             </div>
             <p className="text-sm text-gray-400 mb-4">{server?.username}@{server?.host}:{server?.port}</p>
-            <div className="mb-4">
-              <label className="block text-sm text-gray-400 mb-1">Password</label>
+            <div className="mb-3">
+              <label className="block text-sm text-gray-400 mb-1">密码</label>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && connect(password)}
-                placeholder="SSH password"
+                placeholder="SSH 密码"
                 autoFocus
                 className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
               />
+            </div>
+            <div className="mb-4">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={rememberPassword}
+                  onChange={e => setRememberPassword(e.target.checked)}
+                  className="rounded"
+                />
+                记住密码（用于 sudo 自动输入）
+              </label>
             </div>
             <button
               onClick={() => connect(password)}
               disabled={connecting}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg transition-colors disabled:opacity-50"
             >
-              {connecting ? 'Connecting...' : 'Connect'}
+              {connecting ? '连接中...' : '连接'}
             </button>
           </div>
         </div>

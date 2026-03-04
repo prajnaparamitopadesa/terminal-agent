@@ -80,14 +80,14 @@ function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
           <div className="flex items-center gap-1">
             <button
               onClick={copyCommand}
-              title="Copy"
+              title="复制"
               className="text-gray-400 hover:text-white p-1 rounded transition-colors"
             >
               <Copy className="w-3 h-3" />
             </button>
             <button
               onClick={sendToTerminal}
-              title="Send to Terminal"
+              title="发送到终端"
               className="text-gray-400 hover:text-white p-1 rounded transition-colors text-xs flex items-center gap-1"
             >
               <Send className="w-3 h-3" />
@@ -105,26 +105,26 @@ function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
                     onClick={() => { addGlobalApproval('global'); setShowMenu(false) }}
                     className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
                   >
-                    Allow exact command (all servers)
+                    允许此命令（所有服务器）
                   </button>
                   <button
                     onClick={() => { addGlobalApproval('server'); setShowMenu(false) }}
                     className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
                   >
-                    Allow exact command (this server only)
+                    允许此命令（仅此服务器）
                   </button>
                   <button
                     onClick={() => { onAddSessionApproval(command); setShowMenu(false) }}
                     className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
                   >
-                    Allow exact command (this session only)
+                    允许此命令（仅此会话）
                   </button>
                   <hr className="border-gray-600 my-1" />
                   <button
                     onClick={() => { setShowApprovalDialog(true); setShowMenu(false) }}
                     className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
                   >
-                    Allow command...
+                    允许命令...
                   </button>
                 </div>
               )}

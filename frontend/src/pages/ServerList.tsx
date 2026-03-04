@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Server } from '../types'
 import { Monitor, Plus, Trash2, Terminal, Server as ServerIcon } from 'lucide-react'
 
@@ -7,7 +6,6 @@ export default function ServerList() {
   const [servers, setServers] = useState<Server[]>([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', username: '', host: '', port: '22', terminal_type: 'bash' })
-  const navigate = useNavigate()
 
   useEffect(() => {
     fetch('/api/servers').then(r => r.json()).then(setServers).catch(console.error)
@@ -31,39 +29,43 @@ export default function ServerList() {
     setServers(prev => prev.filter(s => s.id !== id))
   }
 
+  const handleConnect = (server: Server) => {
+    window.open(`/connect/${server.id}`, '_blank')
+  }
+
   return (
     <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <Terminal className="w-8 h-8 text-green-400" />
-            <h1 className="text-2xl font-bold text-white">Terminal Agent</h1>
+            <h1 className="text-2xl font-bold text-white">终端助手</h1>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
             className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Add Server
+            添加服务器
           </button>
         </div>
 
         {showForm && (
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4 text-gray-200">Add New Server</h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-200">添加新服务器</h2>
             <form onSubmit={handleAdd} className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Name (optional)</label>
+                <label className="block text-sm text-gray-400 mb-1">名称（可选）</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="My Server"
+                  placeholder="我的服务器"
                   className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-500"
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Username *</label>
+                <label className="block text-sm text-gray-400 mb-1">用户名 *</label>
                 <input
                   type="text"
                   required
@@ -74,7 +76,7 @@ export default function ServerList() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Host *</label>
+                <label className="block text-sm text-gray-400 mb-1">主机地址 *</label>
                 <input
                   type="text"
                   required
@@ -85,7 +87,7 @@ export default function ServerList() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Port</label>
+                <label className="block text-sm text-gray-400 mb-1">端口</label>
                 <input
                   type="number"
                   value={form.port}
@@ -95,7 +97,7 @@ export default function ServerList() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Default Terminal</label>
+                <label className="block text-sm text-gray-400 mb-1">默认终端</label>
                 <select
                   value={form.terminal_type}
                   onChange={e => setForm(f => ({ ...f, terminal_type: e.target.value }))}
@@ -112,13 +114,13 @@ export default function ServerList() {
                   onClick={() => setShowForm(false)}
                   className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
                 >
-                  Cancel
+                  取消
                 </button>
                 <button
                   type="submit"
                   className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg transition-colors"
                 >
-                  Add Server
+                  添加
                 </button>
               </div>
             </form>
@@ -129,7 +131,7 @@ export default function ServerList() {
           {servers.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <ServerIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No servers added yet. Click "Add Server" to get started.</p>
+              <p>尚未添加任何服务器，点击「添加服务器」开始使用。</p>
             </div>
           ) : (
             servers.map(server => (
@@ -147,11 +149,11 @@ export default function ServerList() {
                 </div>
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => navigate(`/connect/${server.id}`, { state: { server } })}
+                    onClick={() => handleConnect(server)}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-colors"
                   >
                     <Terminal className="w-4 h-4" />
-                    Connect
+                    连接
                   </button>
                   <button
                     onClick={() => handleDelete(server.id)}
