@@ -45,7 +45,7 @@ export default function Connection() {
   
   // Agent WebSocket for approvals
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:3001/ws/agent/${sessionId}`)
+    const ws = new WebSocket(`ws://${window.location.host}/ws/agent/${sessionId}`)
     agentWsRef.current = ws
     
     ws.onmessage = (evt) => {

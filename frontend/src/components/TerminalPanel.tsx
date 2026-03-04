@@ -95,7 +95,7 @@ export default function TerminalPanel({ server, sessionId, onScreenContent, onPa
       localStorage.removeItem(storageKey)
     }
 
-    const ws = new WebSocket(`ws://localhost:3001/ws/terminal/${sessionId}`)
+    const ws = new WebSocket(`ws://${window.location.host}/ws/terminal/${sessionId}`)
     wsRef.current = ws
 
     ws.onopen = () => {
