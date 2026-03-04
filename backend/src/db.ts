@@ -32,6 +32,10 @@ export function getServers() {
   return db.query("SELECT * FROM servers ORDER BY created_at DESC").all();
 }
 
+export function getServerById(id: number) {
+  return db.query("SELECT * FROM servers WHERE id = ?").get(id);
+}
+
 export function addServer(data: { name?: string; username: string; host: string; port?: number; terminal_type?: string }) {
   const stmt = db.prepare("INSERT INTO servers (name, username, host, port, terminal_type) VALUES (?, ?, ?, ?, ?)");
   const result = stmt.run(data.name || null, data.username, data.host, data.port || 22, data.terminal_type || 'bash');

@@ -1,11 +1,12 @@
 import { generateText, streamText, tool } from "ai";
-import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { sendInput, getScreenContent, runCommandAndWait } from "./terminal";
 import { checkAutoApproval } from "./db";
 
-const anthropic = createAnthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
+const dashscope = createOpenAI({
+  apiKey: process.env.DASHSCOPE_API_KEY || "",
+  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 });
 
 export interface ApprovalRequest {

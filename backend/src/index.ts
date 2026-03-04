@@ -1,13 +1,14 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { streamText } from "ai";
-import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession, getSession } from "./terminal";
-import { getServers, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval } from "./db";
+import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval } from "./db";
 import { createAgentTools, getPendingApprovals, resolveApproval } from "./agent";
 
-const anthropic = createAnthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
+const dashscope = createOpenAI({
+  apiKey: process.env.DASHSCOPE_API_KEY || "",
+  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 });
 
 // Map of sessionId -> set of WebSocket connections for terminal
@@ -20,6 +21,7 @@ const app = new Elysia()
   
   // Server CRUD
   .get("/api/servers", () => getServers())
+  .get("/api/servers/:id", ({ params }) => getServerById(Number(params.id)))
   .post("/api/servers", ({ body }) => addServer(body as any), {
     body: t.Object({
       name: t.Optional(t.String()),
@@ -74,7 +76,7 @@ const app = new Elysia()
   .post("/api/convert-to-regex", async ({ body }) => {
     const { command, requirement } = body as { command: string; requirement: string };
     const result = await streamText({
-      model: anthropic("claude-3-5-haiku-20241022"), // haiku for lightweight regex conversion task
+      model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"), // lite model for lightweight regex conversion task
       prompt: `Convert this shell command to a regex pattern based on the requirement.
 Command: ${command}
 Requirement: ${requirement}
@@ -146,10 +148,11 @@ Return only the regex pattern, no explanation.`,
   // Agent chat endpoint
   .post("/api/agent/:sessionId/chat", async ({ params, body, set }) => {
     const { sessionId } = params;
-    const { messages, serverId, sessionApprovals } = body as { 
+    const { messages, serverId, sessionApprovals, sudoPassword } = body as { 
       messages: any[]; 
       serverId?: number;
       sessionApprovals?: string[];
+      sudoPassword?: string;
     };
     
     const tools = createAgentTools(
@@ -166,10 +169,10 @@ Return only the regex pattern, no explanation.`,
     );
     
     const result = streamText({
-      model: anthropic("claude-3-5-sonnet-20241022"),
+      model: dashscope(process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus"),
       system: `You are a server diagnostic agent. You help users diagnose and fix server issues through terminal commands.
 You have access to tools to run commands, send input, and view the terminal screen.
-When running sudo commands, use run_command first, then use send_input to provide the password when prompted.
+When running sudo commands, use run_command first, then use send_input to provide the password when prompted.${sudoPassword ? `\nThe sudo/su password for this server is: ${sudoPassword}` : ""}
 For MySQL REPL, run the mysql command, then use send_input for subsequent SQL commands.
 Always explain what you're doing before running commands.
 You must always request approval before running commands - this is handled automatically by the tools.`,
@@ -188,6 +191,7 @@ You must always request approval before running commands - this is handled autom
       messages: t.Array(t.Any()),
       serverId: t.Optional(t.Number()),
       sessionApprovals: t.Optional(t.Array(t.String())),
+      sudoPassword: t.Optional(t.String()),
     })
   })
   
