@@ -1,13 +1,8 @@
 import { generateText, streamText, tool } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { sendInput, getScreenContent, runCommandAndWait } from "./terminal";
 import { checkAutoApproval } from "./db";
-
-const dashscope = createOpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY || "",
-  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-});
+import dashscope from "./dashscope-model";
 
 export interface ApprovalRequest {
   id: string;

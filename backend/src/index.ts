@@ -1,15 +1,10 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { streamText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession, getSession } from "./terminal";
 import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval } from "./db";
 import { createAgentTools, getPendingApprovals, resolveApproval } from "./agent";
-
-const dashscope = createOpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY || "",
-  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-});
+import dashscope from "./dashscope-model";
 
 // Map of sessionId -> set of WebSocket connections for terminal
 const terminalWsMap = new Map<string, Set<any>>();
@@ -224,6 +219,6 @@ You must always request approval before running commands - this is handled autom
     }
   })
   
-  .listen(3001);
+  .listen(3101);
 
-console.log("Backend running on http://localhost:3001");
+console.log("Backend running on http://localhost:3101");
