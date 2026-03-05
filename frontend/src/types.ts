@@ -19,11 +19,6 @@ export interface AutoApproval {
   created_at: string
 }
 
-export interface ApprovalRequest {
-  id: string
-  command: string
-}
-
 export interface Conversation {
   id: number
   server_id?: number
