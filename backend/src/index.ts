@@ -78,7 +78,7 @@ const app = new Elysia()
 Command: ${command}
 Requirement: ${requirement}
 Return only the regex pattern, no explanation.`,
-      maxTokens: 200,
+      maxOutputTokens: 200,
     });
     let text = "";
     for await (const chunk of result.textStream) {
