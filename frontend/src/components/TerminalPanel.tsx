@@ -109,7 +109,7 @@ export default function TerminalPanel({ server, sessionId, onScreenContent }: Pr
         host: server.host,
         port: server.port || 22,
         username: server.username,
-        password: pwd,
+        password: pwd || null,
         serverId: server.id,
       }))
     }

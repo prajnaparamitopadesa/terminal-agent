@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { streamText, createAgentUIStreamResponse, createIdGenerator } from "ai";
+import { generateText, createAgentUIStreamResponse, createIdGenerator } from "ai";
 import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession } from "./terminal";
 import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword } from "./db";
 import { createTerminalAgent, getPendingApprovals, resolveApproval } from "./agent";
@@ -80,20 +80,18 @@ const app = new Elysia()
   
   // Convert to regex using AI
   .post("/api/convert-to-regex", async ({ body }) => {
-    const { command, requirement } = body as { command: string; requirement: string };
-    const result = await streamText({
+    const { command, requirement } = body as { command: string; requirement?: string };
+    const requirementClause = requirement?.trim()
+      ? ` based on the requirement: ${requirement.trim()}`
+      : "";
+    const result = await generateText({
       model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"),
-      prompt: `Convert this shell command to a regex pattern based on the requirement.
+      prompt: `Convert this shell command to a regex pattern${requirementClause}.
 Command: ${command}
-Requirement: ${requirement}
 Return only the regex pattern, no explanation.`,
       maxOutputTokens: 200,
     });
-    let text = "";
-    for await (const chunk of result.textStream) {
-      text += chunk;
-    }
-    return { regex: text.trim() };
+    return { regex: result.text.trim() };
   })
   
   // Terminal WebSocket
@@ -110,7 +108,7 @@ Return only the regex pattern, no explanation.`,
       if (message.type === "connect") {
         const { host, port, username, password, serverId } = message;
         // Use provided password or fall back to saved password
-        const effectivePassword = password ?? (serverId ? getServerPassword(serverId) : null);
+        const effectivePassword = password || (serverId ? getServerPassword(serverId) : null);
         createSession(sessionId, serverId || 0);
         connectSSH(
           sessionId,

@@ -10,6 +10,17 @@ interface Props {
   onAddSessionApproval: (command: string) => void
 }
 
+/** Strip ANSI escape sequences from text */
+function stripAnsi(text: string): string {
+  return text
+    .replace(/\x1b\[[\x3c-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, '') // CSI sequences
+    .replace(/\x1b\][^\x07]*\x07/g, '')   // OSC sequences
+    .replace(/\x1b[()][AB012]/g, '')       // Character set selection
+    .replace(/\x1b[>=]/g, '')              // Keypad modes
+    .replace(/\x1b[^[\]()>=]/g, '')        // Other 2-char ESC sequences
+    .replace(/\r/g, '')
+}
+
 function extractCodeBlocks(content: string): Array<{ type: 'text' | 'code'; content: string; lang?: string }> {
   const parts: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = []
   const regex = /```(\w*)\n?([\s\S]*?)```/g
@@ -242,11 +253,11 @@ function RunCommandResult({ command, output, state, error, sessionId, serverId, 
       {/* Result */}
       {state === 'output-available' && output && (
         <pre className="p-3 text-xs text-gray-300 font-mono overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
-          {output}
+          {stripAnsi(output)}
         </pre>
       )}
       {state === 'output-available' && error && (
-        <div className="p-3 text-xs text-red-400 font-mono">{error}</div>
+        <div className="p-3 text-xs text-red-400 font-mono">{stripAnsi(error)}</div>
       )}
       {state !== 'output-available' && (
         <div className="p-3 flex items-center gap-2 text-xs text-gray-400">
@@ -339,7 +350,7 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
             </div>
             {state === 'output-available' && result !== undefined && (
               <pre className="text-gray-300 text-xs overflow-x-auto max-h-32 overflow-y-auto bg-black/30 rounded p-2 mt-1">
-                {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+                {stripAnsi(typeof result === 'string' ? result : JSON.stringify(result, null, 2))}
               </pre>
             )}
           </div>
