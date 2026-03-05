@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { ArrowLeft, Send, Terminal as TerminalIcon, MessageSquare, CheckCircle, XCircle, Shield, Plus, GitFork, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Send, Terminal as TerminalIcon, MessageSquare, CheckCircle, XCircle, Shield, Plus, GitFork, ChevronDown, History } from 'lucide-react'
 import TerminalPanel from '../components/TerminalPanel'
 import ChatMessage from '../components/ChatMessage'
 import AutoApprovalManager from '../components/AutoApprovalManager'
 import ApprovalDialog from '../components/ApprovalDialog'
-import { Server, ApprovalRequest } from '../types'
+import HistoryPanel from '../components/HistoryPanel'
+import { Server, ApprovalRequest, Conversation } from '../types'
 
 export default function Connection() {
   const { serverId } = useParams()
@@ -22,6 +23,12 @@ export default function Connection() {
   const [input, setInput] = useState('')
   const [showApprovalMenu, setShowApprovalMenu] = useState(false)
   const [showApprovalDialogCommand, setShowApprovalDialogCommand] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [conversationId, setConversationId] = useState<number | null>(null)
+  const [promptHistory, setPromptHistory] = useState<string[]>([])
+  const [promptHistoryIndex, setPromptHistoryIndex] = useState(-1)
+  const [savedInput, setSavedInput] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const agentWsRef = useRef<WebSocket | null>(null)
   const getScreenRef = useRef<() => string>(() => '')
@@ -69,12 +76,63 @@ export default function Connection() {
     },
   })
 
+  // Save conversation whenever messages change (after AI finishes)
+  const prevStatusRef = useRef(status)
+  useEffect(() => {
+    const wasActive = prevStatusRef.current === 'submitted' || prevStatusRef.current === 'streaming'
+    const isNowReady = status === 'ready'
+    prevStatusRef.current = status
+
+    if (wasActive && isNowReady && messages.length > 0) {
+      const firstUserMsg = messages.find(m => m.role === 'user')
+      const title = firstUserMsg?.parts
+        ?.filter((p: any) => p.type === 'text')
+        .map((p: any) => p.text)
+        .join('') || '未命名对话'
+      const titleLine = title.split('\n')[0].slice(0, 100)
+      const messagesJson = JSON.stringify(messages)
+
+      if (conversationId) {
+        fetch(`/api/conversations/${conversationId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: titleLine, messages: messagesJson }),
+        }).catch(console.error)
+      } else {
+        fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ server_id: Number(serverId), title: titleLine, messages: messagesJson }),
+        })
+          .then(r => r.json())
+          .then(data => setConversationId(data.id))
+          .catch(console.error)
+      }
+    }
+  }, [status, messages, conversationId, serverId])
+
+  // Fetch recent prompts for arrow key navigation
+  useEffect(() => {
+    fetch(`/api/prompts/recent?server_id=${serverId}&limit=50`)
+      .then(r => r.json())
+      .then((prompts: string[]) => setPromptHistory(prompts))
+      .catch(console.error)
+  }, [serverId])
+
   const isLoading = status === 'submitted' || status === 'streaming'
   
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
     
+    // Add to prompt history
+    setPromptHistory(prev => {
+      const filtered = prev.filter(p => p !== input.trim())
+      return [input.trim(), ...filtered]
+    })
+    setPromptHistoryIndex(-1)
+    setSavedInput('')
+
     sendMessage({ text: input })
     setInput('')
   }
@@ -97,6 +155,86 @@ export default function Connection() {
   const handleNewConversation = () => {
     setMessages([])
     setSessionId(`session_${serverId}_${Date.now()}`)
+    setConversationId(null)
+    setShowHistory(false)
+  }
+
+  const handleSelectConversation = async (conv: Conversation) => {
+    try {
+      const res = await fetch(`/api/conversations/${conv.id}`)
+      const data = await res.json()
+      const msgs = JSON.parse(data.messages || '[]')
+      setMessages(msgs)
+      setConversationId(conv.id)
+      setSessionId(`session_${serverId}_${Date.now()}`)
+      setShowHistory(false)
+    } catch (err) {
+      console.error('Failed to load conversation', err)
+    }
+  }
+
+  const handleUsePrompt = (prompt: string) => {
+    setInput(prompt)
+    setShowHistory(false)
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Submit on Enter (without Shift)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleChatSubmit(e)
+      return
+    }
+
+    if (promptHistory.length === 0) return
+
+    const textarea = e.currentTarget
+    const { selectionStart, value } = textarea
+
+    if (e.key === 'ArrowUp') {
+      // Only trigger at the first line
+      const textBeforeCursor = value.slice(0, selectionStart)
+      const isFirstLine = !textBeforeCursor.includes('\n')
+
+      if (isFirstLine) {
+        e.preventDefault()
+        if (promptHistoryIndex === -1) {
+          setSavedInput(value)
+        }
+        const nextIndex = Math.min(promptHistoryIndex + 1, promptHistory.length - 1)
+        setPromptHistoryIndex(nextIndex)
+        setInput(promptHistory[nextIndex])
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = 0
+            textareaRef.current.selectionEnd = 0
+          }
+        }, 0)
+      }
+    } else if (e.key === 'ArrowDown') {
+      // Only trigger at the last line
+      const textAfterCursor = value.slice(selectionStart)
+      const isLastLine = !textAfterCursor.includes('\n')
+
+      if (isLastLine && promptHistoryIndex >= 0) {
+        e.preventDefault()
+        const nextIndex = promptHistoryIndex - 1
+        setPromptHistoryIndex(nextIndex)
+        if (nextIndex < 0) {
+          setInput(savedInput)
+        } else {
+          setInput(promptHistory[nextIndex])
+        }
+        setTimeout(() => {
+          if (textareaRef.current) {
+            const len = textareaRef.current.value.length
+            textareaRef.current.selectionStart = len
+            textareaRef.current.selectionEnd = len
+          }
+        }, 0)
+      }
+    }
   }
 
   const handleFork = () => {
@@ -205,46 +343,63 @@ export default function Connection() {
               <MessageSquare className="w-4 h-4 text-blue-400" />
               <span className="font-medium text-sm">AI 助手</span>
             </div>
-            <button
-              onClick={handleNewConversation}
-              title="新对话"
-              className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                title="历史记录"
+                className={`p-1 rounded-lg transition-colors ${showHistory ? 'text-blue-400 bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+              >
+                <History className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleNewConversation}
+                title="新对话"
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 && (
-              <div className="text-center text-gray-500 text-sm mt-8">
-                <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>向 AI 助手提问，协助诊断服务器问题。</p>
-                <p className="mt-1 text-xs">首次发送消息时，当前终端屏幕内容将自动附上。</p>
-              </div>
-            )}
-            {messages.map(msg => (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-                sessionId={sessionId}
-                serverId={Number(serverId)}
-                onAddSessionApproval={handleAddSessionApproval}
-              />
-            ))}
-            {isLoading && (
-              <div className="flex items-center gap-2 text-gray-400 text-sm">
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          {showHistory ? (
+            <HistoryPanel
+              serverId={Number(serverId)}
+              onSelectConversation={handleSelectConversation}
+              onUsePrompt={handleUsePrompt}
+            />
+          ) : (
+            <>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.length === 0 && (
+                <div className="text-center text-gray-500 text-sm mt-8">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>向 AI 助手提问，协助诊断服务器问题。</p>
+                  <p className="mt-1 text-xs">首次发送消息时，当前终端屏幕内容将自动附上。</p>
                 </div>
-                <span>思考中...</span>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
+              )}
+              {messages.map(msg => (
+                <ChatMessage
+                  key={msg.id}
+                  message={msg}
+                  sessionId={sessionId}
+                  serverId={Number(serverId)}
+                  onAddSessionApproval={handleAddSessionApproval}
+                />
+              ))}
+              {isLoading && (
+                <div className="flex items-center gap-2 text-gray-400 text-sm">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span>思考中...</span>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
           
-          {/* Approval notification */}
+            {/* Approval notification */}
           {pendingApproval && (
             <div className="mx-4 mb-3 bg-yellow-900/40 border border-yellow-700 rounded-lg p-3">
               <p className="text-yellow-300 text-xs font-medium mb-1">⚠️ 命令需要审批</p>
@@ -339,23 +494,34 @@ export default function Connection() {
           
           {/* Chat input */}
           <form onSubmit={handleChatSubmit} className="p-4 border-t border-gray-700">
-            <div className="flex gap-2">
-              <input
+            <div className="flex gap-2 items-end">
+              <textarea
+                ref={textareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
+                onKeyDown={handleInputKeyDown}
                 placeholder="向 AI 助手发送消息..."
                 disabled={isLoading}
-                className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                rows={1}
+                className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-none max-h-32 overflow-y-auto"
+                style={{ minHeight: '38px' }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement
+                  target.style.height = 'auto'
+                  target.style.height = Math.min(target.scrollHeight, 128) + 'px'
+                }}
               />
               <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
-                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-2 rounded-lg transition-colors"
+                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>
             </div>
           </form>
+          </>
+          )}
         </div>
       </div>
       
