@@ -1,15 +1,17 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { streamText } from "ai";
-import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession, getSession } from "./terminal";
+import { streamText, createAgentUIStreamResponse, createIdGenerator } from "ai";
+import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession } from "./terminal";
 import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval } from "./db";
-import { createAgentTools, getPendingApprovals, resolveApproval } from "./agent";
+import { createTerminalAgent, getPendingApprovals, resolveApproval } from "./agent";
 import dashscope from "./dashscope-model";
 
 // Map of sessionId -> set of WebSocket connections for terminal
 const terminalWsMap = new Map<string, Set<any>>();
 // Map of sessionId -> set of WebSocket connections for agent approvals
 const agentWsMap = new Map<string, Set<any>>();
+
+const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
 
 const app = new Elysia()
   .use(cors())
@@ -71,12 +73,12 @@ const app = new Elysia()
   .post("/api/convert-to-regex", async ({ body }) => {
     const { command, requirement } = body as { command: string; requirement: string };
     const result = await streamText({
-      model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"), // lite model for lightweight regex conversion task
+      model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"),
       prompt: `Convert this shell command to a regex pattern based on the requirement.
 Command: ${command}
 Requirement: ${requirement}
 Return only the regex pattern, no explanation.`,
-      maxTokens: 200,
+      maxOutputTokens: 200,
     });
     let text = "";
     for await (const chunk of result.textStream) {
@@ -141,46 +143,34 @@ Return only the regex pattern, no explanation.`,
   })
   
   // Agent chat endpoint
-  .post("/api/agent/:sessionId/chat", async ({ params, body, set }) => {
+  .post("/api/agent/:sessionId/chat", async ({ params, body }) => {
     const { sessionId } = params;
-    const { messages, serverId, sessionApprovals, sudoPassword } = body as { 
-      messages: any[]; 
+    const { messages, serverId, sudoPassword } = body as {
+      messages: any[];
       serverId?: number;
-      sessionApprovals?: string[];
       sudoPassword?: string;
     };
-    
-    const tools = createAgentTools(
+
+    const model = dashscope(process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus");
+    const agent = createTerminalAgent(model, {
       sessionId,
-      serverId || 0,
-      (approval) => {
+      serverId: serverId || 0,
+      sudoPassword,
+      onApprovalNeeded: (approval) => {
         const connections = agentWsMap.get(sessionId);
         if (connections) {
           for (const conn of connections) {
             try { conn.send({ type: "approval_needed", ...approval }); } catch (e) { console.error("WS send error:", e); }
           }
         }
-      }
-    );
-    
-    const result = streamText({
-      model: dashscope(process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus"),
-      system: `You are a server diagnostic agent. You help users diagnose and fix server issues through terminal commands.
-You have access to tools to run commands, send input, and view the terminal screen.
-When running sudo commands, use run_command first, then use send_input to provide the password when prompted.${sudoPassword ? `\nThe sudo/su password for this server is: ${sudoPassword}` : ""}
-For MySQL REPL, run the mysql command, then use send_input for subsequent SQL commands.
-Always explain what you're doing before running commands.
-You must always request approval before running commands - this is handled automatically by the tools.`,
-      messages,
-      tools,
-      maxSteps: 20,
+      },
     });
-    
-    set.headers["Content-Type"] = "text/event-stream";
-    set.headers["Cache-Control"] = "no-cache";
-    set.headers["Connection"] = "keep-alive";
-    
-    return result.toDataStreamResponse();
+
+    return createAgentUIStreamResponse({
+      agent,
+      uiMessages: messages,
+      generateMessageId,
+    });
   }, {
     body: t.Object({
       messages: t.Array(t.Any()),

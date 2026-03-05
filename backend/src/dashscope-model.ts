@@ -207,7 +207,7 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
           type: 'tool-call',
           toolCallId: toolCall.id,
           toolName: toolCall.function.name,
-          input: toolCall.function.arguments,
+          input: toolCall.function.arguments ?? '',
         });
       }
     }
@@ -295,7 +295,7 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
           transform: (chunk, controller) => {
             // console.log('Dashscope stream chunk:', JSON.stringify(chunk));
             if (!chunk.success) {
-              controller.enqueue({ type: 'error', error: (chunk as any).error });
+              controller.enqueue({ type: 'error', error: chunk.error });
               return;
             }
 
@@ -388,8 +388,8 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
             }
 
             if (usage) {
-              this.#usage.promptTokens += usage.prompt_tokens;
-              this.#usage.completionTokens += usage.completion_tokens;
+              this.#usage.promptTokens += usage.prompt_tokens ?? 0;
+              this.#usage.completionTokens += usage.completion_tokens ?? 0;
             }
 
             controller.enqueue({
@@ -420,7 +420,7 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
   private prepareRequest(
     options: LanguageModelV3CallOptions,
     stream: boolean
-  ): { body: DashscopeChatRequest; headers: Record<string, string> } {
+  ): { body: DashscopeChatRequest; headers: Record<string, string | undefined> } {
     const messages = toDashscopeMessages(options.prompt);
     const tools = options.tools?.length ? toDashscopeTools(options.tools) : undefined;
     const toolChoice = options.toolChoice ? toDashscopeToolChoice(options.toolChoice) : undefined;
@@ -588,3 +588,11 @@ function mapFinishReason(finishReason: string | null | undefined): LanguageModel
   }
 }
 
+
+export default function dashscope(modelId: string): DashscopeChatLanguageModel {
+  return new DashscopeChatLanguageModel(
+    modelId,
+    process.env.DASHSCOPE_API_KEY || '',
+    process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  );
+}
