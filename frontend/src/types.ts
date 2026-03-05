@@ -5,6 +5,7 @@ export interface Server {
   host: string
   port: number
   terminal_type: string
+  has_password: boolean
   created_at: string
 }
 

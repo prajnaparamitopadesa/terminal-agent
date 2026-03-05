@@ -10,20 +10,17 @@ interface Props {
   server: Server
   sessionId: string
   onScreenContent: (getter: () => string) => void
-  onPasswordSaved?: (password: string) => void
 }
 
-export default function TerminalPanel({ server, sessionId, onScreenContent, onPasswordSaved }: Props) {
+export default function TerminalPanel({ server, sessionId, onScreenContent }: Props) {
   const termRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
-  const storageKey = `saved_pwd_${server?.id}`
-  const savedPwd = server?.id ? (localStorage.getItem(storageKey) || '') : ''
-  const [password, setPassword] = useState(savedPwd)
-  const [rememberPassword, setRememberPassword] = useState(!!savedPwd)
+  const [password, setPassword] = useState('')
+  const [rememberPassword, setRememberPassword] = useState(server?.has_password || false)
   const [showPasswordInput, setShowPasswordInput] = useState(true)
   const screenBufferRef = useRef<string>('')
 
@@ -88,11 +85,19 @@ export default function TerminalPanel({ server, sessionId, onScreenContent, onPa
     setConnecting(true)
     setShowPasswordInput(false)
 
-    if (rememberPassword) {
-      localStorage.setItem(storageKey, pwd)
-      onPasswordSaved?.(pwd)
-    } else {
-      localStorage.removeItem(storageKey)
+    // Save or remove password on the server
+    if (rememberPassword && pwd) {
+      fetch(`/api/servers/${server.id}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd }),
+      }).catch(console.error)
+    } else if (!rememberPassword) {
+      fetch(`/api/servers/${server.id}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: null }),
+      }).catch(console.error)
     }
 
     const ws = new WebSocket(`ws://${window.location.host}/ws/terminal/${sessionId}`)
@@ -167,7 +172,7 @@ export default function TerminalPanel({ server, sessionId, onScreenContent, onPa
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && connect(password)}
-                placeholder="SSH 密码"
+                placeholder={server?.has_password ? '••••••••（已保存，留空使用已保存密码）' : 'SSH 密码'}
                 autoFocus
                 className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
               />
@@ -180,7 +185,7 @@ export default function TerminalPanel({ server, sessionId, onScreenContent, onPa
                   onChange={e => setRememberPassword(e.target.checked)}
                   className="rounded"
                 />
-                记住密码（用于 sudo 自动输入）
+                记住密码
               </label>
             </div>
             <button

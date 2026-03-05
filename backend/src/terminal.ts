@@ -85,10 +85,20 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number) {
   }
 }
 
+/** Strip ANSI escape sequences from text */
+export function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+    .replace(/\x1b\].*?\x07/g, '')      // OSC sequences
+    .replace(/\x1b\[[\?]?[0-9;]*[a-zA-Z]/g, '')
+    .replace(/\x1b[()][AB012]/g, '')     // Character set selection
+    .replace(/\x1b[>=]/g, '')            // Keypad modes
+    .replace(/\r/g, '');                 // Carriage returns
+}
+
 export function getScreenContent(sessionId: string): string {
   const session = sessions.get(sessionId);
   if (!session) return "";
-  return session.screenBuffer.slice(-50).join("");
+  return stripAnsi(session.screenBuffer.slice(-50).join(""));
 }
 
 export async function runCommandAndWait(
@@ -104,7 +114,8 @@ export async function runCommandAndWait(
   
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      resolve(output.join(""));
+      session.stream.removeListener("data", handler);
+      resolve(stripAnsi(output.join("")));
     }, timeout);
     
     const handler = (data: Buffer) => {
@@ -113,11 +124,11 @@ export async function runCommandAndWait(
       if (text.includes(marker)) {
         clearTimeout(timer);
         session.stream.removeListener("data", handler);
-        resolve(output.join(""));
+        resolve(stripAnsi(output.join("")));
       }
     };
     
     session.stream.on("data", handler);
-    session.stream.write(`${command}; echo "${marker}"\n`);
+    session.stream.write(`${command}; echo "${marker}"\r`);
   });
 }

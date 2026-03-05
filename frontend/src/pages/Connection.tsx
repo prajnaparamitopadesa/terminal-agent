@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { ArrowLeft, Send, Terminal as TerminalIcon, MessageSquare, CheckCircle, XCircle, Shield } from 'lucide-react'
+import { ArrowLeft, Send, Terminal as TerminalIcon, MessageSquare, CheckCircle, XCircle, Shield, Plus, GitFork, ChevronDown } from 'lucide-react'
 import TerminalPanel from '../components/TerminalPanel'
 import ChatMessage from '../components/ChatMessage'
 import AutoApprovalManager from '../components/AutoApprovalManager'
+import ApprovalDialog from '../components/ApprovalDialog'
 import { Server, ApprovalRequest } from '../types'
 
 export default function Connection() {
@@ -13,16 +14,16 @@ export default function Connection() {
   const location = useLocation()
   const navigate = useNavigate()
   const [server, setServer] = useState<Server | undefined>(location.state?.server as Server | undefined)
-  const sessionId = useRef(`session_${serverId}_${Date.now()}`).current
+  const [sessionId, setSessionId] = useState(`session_${serverId}_${Date.now()}`)
   
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null)
   const [showApprovalManager, setShowApprovalManager] = useState(false)
   const [sessionApprovals, setSessionApprovals] = useState<string[]>([])
-  const [sudoPassword, setSudoPassword] = useState('')
   const [input, setInput] = useState('')
+  const [showApprovalMenu, setShowApprovalMenu] = useState(false)
+  const [showApprovalDialogCommand, setShowApprovalDialogCommand] = useState<string | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const agentWsRef = useRef<WebSocket | null>(null)
-  const firstMessageRef = useRef(false)
   const getScreenRef = useRef<() => string>(() => '')
 
   // Fetch server if not provided via navigation state (e.g. opened in new window)
@@ -35,13 +36,13 @@ export default function Connection() {
     }
   }, [server, serverId])
 
-  // Load saved password from localStorage
+  // Set document title to server name (requirement 8)
   useEffect(() => {
-    if (server?.id) {
-      const saved = localStorage.getItem(`saved_pwd_${server.id}`)
-      if (saved) setSudoPassword(saved)
+    if (server) {
+      document.title = server.name || server.host || '终端'
     }
-  }, [server?.id])
+    return () => { document.title = 'Terminal Agent' }
+  }, [server])
   
   // Agent WebSocket for approvals
   useEffect(() => {
@@ -58,10 +59,10 @@ export default function Connection() {
     return () => ws.close()
   }, [sessionId])
   
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: `/api/agent/${sessionId}/chat`,
-      body: { serverId: Number(serverId), sessionApprovals, sudoPassword },
+      body: { serverId: Number(serverId), sessionApprovals },
     }),
     onFinish: () => {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -74,16 +75,7 @@ export default function Connection() {
     e.preventDefault()
     if (!input.trim()) return
     
-    let text = input
-    if (!firstMessageRef.current) {
-      firstMessageRef.current = true
-      const screenContent = getScreenRef.current()
-      if (screenContent) {
-        text = `当前终端屏幕内容:\n\`\`\`\n${screenContent}\n\`\`\`\n\n用户请求: ${input}`
-      }
-    }
-    
-    sendMessage({ text })
+    sendMessage({ text: input })
     setInput('')
   }
   
@@ -101,13 +93,25 @@ export default function Connection() {
   const handleAddSessionApproval = (command: string) => {
     setSessionApprovals(prev => [...prev, command])
   }
+
+  const handleNewConversation = () => {
+    setMessages([])
+    setSessionId(`session_${serverId}_${Date.now()}`)
+  }
+
+  const handleFork = () => {
+    window.open(`/connect/${serverId}`, '_blank')
+  }
   
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Resizable agent panel
-  const [agentPanelWidth, setAgentPanelWidth] = useState(384) // default 384px
+  // Resizable agent panel - persist width in localStorage (requirement 10)
+  const [agentPanelWidth, setAgentPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('agent_panel_width')
+    return saved ? Number(saved) : 384
+  })
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
@@ -141,6 +145,11 @@ export default function Connection() {
     }
   }, [])
 
+  // Persist panel width to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('agent_panel_width', String(agentPanelWidth))
+  }, [agentPanelWidth])
+
   return (
     <div className="h-screen flex flex-col bg-gray-950">
       {/* Header */}
@@ -152,6 +161,13 @@ export default function Connection() {
           <TerminalIcon className="w-5 h-5 text-green-400" />
           <span className="font-semibold">{server?.name || server?.host || '终端'}</span>
           {server && <span className="text-gray-400 text-sm">{server.username}@{server.host}:{server.port}</span>}
+          <button
+            onClick={handleFork}
+            title="在新窗口中打开"
+            className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <GitFork className="w-4 h-4" />
+          </button>
         </div>
         <button
           onClick={() => setShowApprovalManager(true)}
@@ -171,7 +187,6 @@ export default function Connection() {
               server={server}
               sessionId={sessionId}
               onScreenContent={(getter) => { getScreenRef.current = getter }}
-              onPasswordSaved={(pwd) => setSudoPassword(pwd)}
             />
           )}
         </div>
@@ -185,9 +200,18 @@ export default function Connection() {
         
         {/* Chat panel */}
         <div className="flex flex-col border-l border-gray-700 bg-gray-900 flex-shrink-0" style={{ width: agentPanelWidth }}>
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-700">
-            <MessageSquare className="w-4 h-4 text-blue-400" />
-            <span className="font-medium text-sm">AI 助手</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-blue-400" />
+              <span className="font-medium text-sm">AI 助手</span>
+            </div>
+            <button
+              onClick={handleNewConversation}
+              title="新对话"
+              className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -228,12 +252,81 @@ export default function Connection() {
                 {pendingApproval.command}
               </code>
               <div className="flex gap-2">
-                <button
-                  onClick={() => handleApprove(true)}
-                  className="flex-1 flex items-center justify-center gap-1 bg-green-700 hover:bg-green-600 text-white text-xs py-1 rounded"
-                >
-                  <CheckCircle className="w-3 h-3" /> 允许
-                </button>
+                <div className="flex-1 flex relative">
+                  <button
+                    onClick={() => handleApprove(true)}
+                    className="flex-1 flex items-center justify-center gap-1 bg-green-700 hover:bg-green-600 text-white text-xs py-1 rounded-l"
+                  >
+                    <CheckCircle className="w-3 h-3" /> 允许
+                  </button>
+                  <button
+                    onClick={() => setShowApprovalMenu(!showApprovalMenu)}
+                    className="bg-green-700 hover:bg-green-600 text-white text-xs py-1 px-1.5 rounded-r border-l border-green-600"
+                  >
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {showApprovalMenu && (
+                    <div className="absolute left-0 bottom-full mb-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 w-64 py-1">
+                      <button
+                        onClick={async () => {
+                          await fetch('/api/auto-approvals', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ pattern: pendingApproval.command, is_regex: false, scope: 'global', description: '完全匹配' }),
+                          })
+                          setShowApprovalMenu(false)
+                          handleApprove(true)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                      >
+                        允许完全匹配的命令
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await fetch('/api/auto-approvals', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ pattern: pendingApproval.command, is_regex: false, scope: 'server', server_id: Number(serverId), description: '完全匹配（仅此服务器）' }),
+                          })
+                          setShowApprovalMenu(false)
+                          handleApprove(true)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                      >
+                        允许完全匹配的命令（仅此服务器）
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAddSessionApproval(pendingApproval.command)
+                          setShowApprovalMenu(false)
+                          handleApprove(true)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                      >
+                        允许完全匹配的命令（仅本次会话）
+                      </button>
+                      <hr className="border-gray-600 my-1" />
+                      <button
+                        onClick={() => {
+                          setShowApprovalMenu(false)
+                          setShowApprovalDialogCommand(pendingApproval.command)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                      >
+                        允许命令...
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowApprovalMenu(false)
+                          setShowApprovalManager(true)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                      >
+                        管理自动审批...
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => handleApprove(false)}
                   className="flex-1 flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 text-white text-xs py-1 rounded"
@@ -270,6 +363,14 @@ export default function Connection() {
         <AutoApprovalManager
           onClose={() => setShowApprovalManager(false)}
           serverId={Number(serverId)}
+        />
+      )}
+      
+      {showApprovalDialogCommand && (
+        <ApprovalDialog
+          command={showApprovalDialogCommand}
+          serverId={Number(serverId)}
+          onClose={() => setShowApprovalDialogCommand(null)}
         />
       )}
     </div>

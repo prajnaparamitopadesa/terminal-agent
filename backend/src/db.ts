@@ -10,9 +10,17 @@ db.run(`
     host TEXT NOT NULL,
     port INTEGER DEFAULT 22,
     terminal_type TEXT DEFAULT 'bash',
+    saved_password TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+// Migration: add saved_password column if not exists
+try {
+  db.run(`ALTER TABLE servers ADD COLUMN saved_password TEXT`);
+} catch {
+  // Column already exists
+}
 
 db.run(`
   CREATE TABLE IF NOT EXISTS auto_approvals (
@@ -29,11 +37,24 @@ db.run(`
 export { db };
 
 export function getServers() {
-  return db.query("SELECT * FROM servers ORDER BY created_at DESC").all();
+  const servers = db.query("SELECT * FROM servers ORDER BY created_at DESC").all() as any[];
+  return servers.map(({ saved_password, ...rest }) => ({ ...rest, has_password: !!saved_password }));
 }
 
 export function getServerById(id: number) {
-  return db.query("SELECT * FROM servers WHERE id = ?").get(id);
+  const server = db.query("SELECT * FROM servers WHERE id = ?").get(id) as any;
+  if (!server) return null;
+  const { saved_password, ...rest } = server;
+  return { ...rest, has_password: !!saved_password };
+}
+
+export function getServerPassword(id: number): string | null {
+  const row = db.query("SELECT saved_password FROM servers WHERE id = ?").get(id) as any;
+  return row?.saved_password || null;
+}
+
+export function updateServerPassword(id: number, password: string | null) {
+  db.run("UPDATE servers SET saved_password = ? WHERE id = ?", [password, id]);
 }
 
 export function addServer(data: { name?: string; username: string; host: string; port?: number; terminal_type?: string }) {
