@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react'
-import { X, Trash2, Edit2, Save, XCircle, Regex } from 'lucide-react'
+import { Trash2, Edit2, Save, XCircle, Regex } from 'lucide-react'
 import { AutoApproval } from '../types'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Select } from './ui/select'
+import { Code } from './ui/code'
 
 interface Props {
   onClose: () => void
@@ -43,15 +53,12 @@ export default function AutoApprovalManager({ onClose, serverId }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-[600px] max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-          <h3 className="font-semibold text-white">管理自动审批规则</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="w-[600px] max-w-[calc(100vw-2rem)] max-h-[80vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 py-4 border-b border-gray-700 mb-0">
+          <DialogTitle>管理自动审批规则</DialogTitle>
+        </DialogHeader>
+
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {approvals.length === 0 ? (
             <p className="text-center text-gray-500 py-8">暂无自动审批规则。</p>
@@ -62,10 +69,10 @@ export default function AutoApprovalManager({ onClose, serverId }: Props) {
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs text-gray-400 mb-1">匹配规则</label>
-                      <input
+                      <Input
                         value={editForm.pattern}
                         onChange={e => setEditForm(f => ({ ...f, pattern: e.target.value }))}
-                        className="w-full bg-gray-700 border border-gray-500 rounded px-3 py-1.5 text-sm font-mono text-white focus:outline-none focus:border-blue-500"
+                        className="font-mono text-sm"
                       />
                     </div>
                     <div className="flex items-center gap-4">
@@ -75,24 +82,24 @@ export default function AutoApprovalManager({ onClose, serverId }: Props) {
                           checked={editForm.is_regex}
                           onChange={e => setEditForm(f => ({ ...f, is_regex: e.target.checked }))}
                         />
-                      Regex（正则表达式）
+                        Regex（正则表达式）
                       </label>
-                      <select
+                      <Select
                         value={editForm.scope}
                         onChange={e => setEditForm(f => ({ ...f, scope: e.target.value }))}
-                        className="bg-gray-700 border border-gray-500 rounded px-2 py-1 text-sm text-white"
+                        className="w-auto text-sm"
                       >
                         <option value="global">所有服务器</option>
                         <option value="server">仅此服务器</option>
-                      </select>
+                      </Select>
                     </div>
                     <div className="flex gap-2 justify-end">
-                      <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-white p-1">
+                      <Button variant="ghost" size="iconSm" onClick={() => setEditingId(null)}>
                         <XCircle className="w-4 h-4" />
-                      </button>
-                      <button onClick={saveEdit} className="text-green-400 hover:text-green-300 p-1">
+                      </Button>
+                      <Button variant="ghost" size="iconSm" onClick={saveEdit} className="text-green-400 hover:text-green-300">
                         <Save className="w-4 h-4" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ) : (
@@ -100,7 +107,7 @@ export default function AutoApprovalManager({ onClose, serverId }: Props) {
                     <div>
                       <div className="flex items-center gap-2">
                         {approval.is_regex ? <Regex className="w-3 h-3 text-purple-400" /> : null}
-                        <code className="text-sm font-mono text-green-300">{approval.pattern}</code>
+                        <Code className="text-sm">{approval.pattern}</Code>
                       </div>
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-xs text-gray-500">{approval.scope === 'server' ? `服务器 #${approval.server_id}` : '所有服务器'}</span>
@@ -108,12 +115,12 @@ export default function AutoApprovalManager({ onClose, serverId }: Props) {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => startEdit(approval)} className="text-gray-400 hover:text-blue-400 p-1">
+                      <Button variant="ghost" size="iconSm" onClick={() => startEdit(approval)} className="text-gray-400 hover:text-blue-400">
                         <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDelete(approval.id)} className="text-gray-400 hover:text-red-400 p-1">
+                      </Button>
+                      <Button variant="ghost" size="iconSm" onClick={() => handleDelete(approval.id)} className="text-gray-400 hover:text-red-400">
                         <Trash2 className="w-4 h-4" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -121,16 +128,13 @@ export default function AutoApprovalManager({ onClose, serverId }: Props) {
             ))
           )}
         </div>
-        
+
         <div className="px-6 py-4 border-t border-gray-700">
-          <button
-            onClick={onClose}
-            className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg transition-colors"
-          >
+          <Button onClick={onClose} variant="secondary" className="w-full">
             关闭
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -146,15 +146,29 @@ interface ExecStream {
 
 const execStreams = new Map<string, ExecStream>();
 
+const DEBUG_EXEC = process.env.DEBUG_AGENT === '1';
+
+function debugLog(...args: unknown[]) {
+  if (DEBUG_EXEC) console.log('[DEBUG_AGENT]', ...args);
+}
+
 export async function execCommand(sessionId: string, command: string): Promise<string> {
   const client = agentClients.get(sessionId);
   if (!client) throw new Error("Agent not connected");
 
   const streamId = `exec_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  debugLog(`execCommand start: streamId=${streamId} command=${command}`);
 
   return new Promise((resolve, reject) => {
-    client.exec(command, { pty: true }, (err: Error | undefined, stream: any) => {
-      if (err) return reject(err);
+    // Do NOT use pty:true — PTY causes programs like systemctl to invoke a pager
+    // (e.g. `less`) that waits for user input, stalling the stream indefinitely.
+    // Without PTY, commands run non-interactively and exit cleanly.
+    // Both stdout AND stderr must be consumed to prevent backpressure stalls.
+    client.exec(command, (err: Error | undefined, stream: any) => {
+      if (err) {
+        debugLog(`execCommand error: streamId=${streamId}`, err.message);
+        return reject(err);
+      }
 
       const execStream: ExecStream = {
         stream,
@@ -167,8 +181,9 @@ export async function execCommand(sessionId: string, command: string): Promise<s
         sessionId,
       };
 
-      stream.on('data', (data: Buffer) => {
+      const onData = (data: Buffer) => {
         const text = data.toString();
+        debugLog(`exec data: streamId=${streamId} len=${text.length}`);
         execStream.output += text;
         execStream.lastOutputTime = Date.now();
 
@@ -178,24 +193,24 @@ export async function execCommand(sessionId: string, command: string): Promise<s
         } else {
           execStream.buffer.push(text);
         }
+      };
+
+      stream.on('data', onData);
+      // Consume stderr to prevent backpressure stalls on non-PTY exec channels.
+      // stderr always exists on exec channels but use optional chaining for safety.
+      if (stream.stderr) {
+        stream.stderr.on('data', onData);
+      }
+
+      // Capture exit code before 'close' fires (ssh2 exec channels)
+      stream.on('exit', (code: number | null, signal?: string) => {
+        debugLog(`exec exit: streamId=${streamId} code=${code} signal=${signal}`);
+        execStream.exitCode = code ?? (signal ? -1 : 0);
       });
 
-      stream.stderr?.on('data', (data: Buffer) => {
-        const text = data.toString();
-        execStream.output += text;
-        execStream.lastOutputTime = Date.now();
-
-        if (execStream.pendingResolves.length > 0) {
-          const res = execStream.pendingResolves.shift()!;
-          res(text);
-        } else {
-          execStream.buffer.push(text);
-        }
-      });
-
-      stream.on('close', (code: number) => {
+      stream.on('close', () => {
+        debugLog(`exec close: streamId=${streamId} exitCode=${execStream.exitCode} outputLen=${execStream.output.length}`);
         execStream.closed = true;
-        execStream.exitCode = code;
         for (const res of execStream.pendingResolves) {
           res(null);
         }

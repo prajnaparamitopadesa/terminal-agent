@@ -11,6 +11,12 @@ import {
 import { checkAutoApproval, getServerById, getServerPassword } from "./db";
 import type { LanguageModel } from "ai";
 
+const DEBUG_AGENT = process.env.DEBUG_AGENT === '1';
+
+function agentDebug(...args: unknown[]) {
+  if (DEBUG_AGENT) console.log('[DEBUG_AGENT agent]', ...args);
+}
+
 // Pending user input requests (for request-user-input tool)
 interface PendingUserInput {
   resolve: (input: string) => void;
@@ -61,18 +67,26 @@ async function collectExecOutput(
 
   while (true) {
     const elapsed = Date.now() - startTime;
-    if (elapsed >= timeout) break;
+    if (elapsed >= timeout) {
+      agentDebug(`collectExecOutput timeout: streamId=${streamId} elapsed=${elapsed}`);
+      break;
+    }
 
     const idleDuration = handleInput ? promptTimeout : timeout - elapsed;
     const waitTime = Math.min(idleDuration, timeout - elapsed);
+    agentDebug(`collectExecOutput waiting: streamId=${streamId} waitTime=${waitTime}`);
     const chunk = await readNextChunk(streamId, waitTime);
 
     const info = getExecStreamInfo(streamId);
-    if (!info) break;
+    if (!info) {
+      agentDebug(`collectExecOutput: streamId=${streamId} no info, breaking`);
+      break;
+    }
 
     if (chunk !== null) {
       lastDataTime = Date.now();
       onChunk?.(info.output);
+      agentDebug(`collectExecOutput chunk received: streamId=${streamId} chunkLen=${chunk.length} closed=${info.closed}`);
 
       // Check prompt regex on new data
       if (handleInput && compiledPromptRegex) {
@@ -82,7 +96,10 @@ async function collectExecOutput(
       }
     } else {
       // No data received within wait time
-      if (info.closed) break;
+      if (info.closed) {
+        agentDebug(`collectExecOutput: streamId=${streamId} stream closed, breaking`);
+        break;
+      }
 
       // Idle timeout
       const idleTime = Date.now() - lastDataTime;
@@ -93,6 +110,7 @@ async function collectExecOutput(
             return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
           }
         }
+        agentDebug(`collectExecOutput idle timeout: streamId=${streamId} idleTime=${idleTime}`);
         // Return on idle timeout regardless
         return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
       }
