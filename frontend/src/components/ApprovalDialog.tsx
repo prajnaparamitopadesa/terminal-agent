@@ -15,13 +15,12 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
   const [converting, setConverting] = useState(false)
 
   const convertToRegex = async () => {
-    if (!requirement.trim()) return
     setConverting(true)
     try {
       const res = await fetch('/api/convert-to-regex', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, requirement }),
+        body: JSON.stringify({ command, requirement: requirement || undefined }),
       })
       const data = await res.json()
       setPattern(data.regex)
@@ -91,7 +90,7 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
             />
             <button
               onClick={convertToRegex}
-              disabled={converting || !requirement.trim()}
+              disabled={converting}
               className="flex items-center gap-1 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5" />
