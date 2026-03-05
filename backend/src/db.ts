@@ -36,6 +36,17 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id INTEGER,
+    title TEXT NOT NULL,
+    messages TEXT NOT NULL DEFAULT '[]',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 export { db };
 
 export function getServers() {
@@ -86,6 +97,88 @@ export function updateAutoApproval(id: number, data: { pattern?: string; is_rege
 
 export function deleteAutoApproval(id: number) {
   db.run("DELETE FROM auto_approvals WHERE id = ?", [id]);
+}
+
+// Conversation CRUD
+export function getConversations(options: { search?: string; limit?: number; offset?: number; server_id?: number } = {}) {
+  const { search, limit = 20, offset = 0, server_id } = options;
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (server_id !== undefined) {
+    conditions.push("server_id = ?");
+    params.push(server_id);
+  }
+
+  if (search && search.trim()) {
+    conditions.push("title LIKE ?");
+    params.push(`%${search.trim()}%`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.push(limit, offset);
+
+  const rows = db.query(`SELECT id, server_id, title, created_at, updated_at FROM conversations ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`).all(...params) as any[];
+  return rows;
+}
+
+export function getConversation(id: number) {
+  return db.query("SELECT * FROM conversations WHERE id = ?").get(id) as any;
+}
+
+export function createConversation(data: { server_id?: number; title: string; messages: string }) {
+  const stmt = db.prepare("INSERT INTO conversations (server_id, title, messages) VALUES (?, ?, ?)");
+  const result = stmt.run(data.server_id || null, data.title, data.messages);
+  return { id: result.lastInsertRowid, ...data };
+}
+
+export function updateConversation(id: number, data: { title?: string; messages?: string }) {
+  const stmt = db.prepare("UPDATE conversations SET title = COALESCE(?, title), messages = COALESCE(?, messages), updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+  stmt.run(data.title || null, data.messages || null, id);
+}
+
+export function deleteConversation(id: number) {
+  db.run("DELETE FROM conversations WHERE id = ?", [id]);
+}
+
+export function getRecentPrompts(options: { server_id?: number; limit?: number } = {}) {
+  const { server_id, limit = 50 } = options;
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (server_id !== undefined) {
+    conditions.push("server_id = ?");
+    params.push(server_id);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.push(limit);
+
+  const rows = db.query(`SELECT messages FROM conversations ${where} ORDER BY updated_at DESC LIMIT ?`).all(...params) as any[];
+
+  // Extract the first user message from each conversation
+  const prompts: string[] = [];
+  for (const row of rows) {
+    try {
+      const messages = JSON.parse(row.messages);
+      for (const msg of messages) {
+        if (msg.role === 'user') {
+          // Extract text content from parts
+          const text = msg.parts
+            ?.filter((p: any) => p.type === 'text')
+            .map((p: any) => p.text)
+            .join('') || msg.content || '';
+          if (text.trim()) {
+            prompts.push(text.trim());
+          }
+          break; // Only first user message per conversation
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse conversation messages:', e);
+    }
+  }
+  return prompts;
 }
 
 export function checkAutoApproval(command: string, serverId?: number): boolean {

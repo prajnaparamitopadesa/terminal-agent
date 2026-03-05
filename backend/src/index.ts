@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { generateText, createAgentUIStreamResponse, createIdGenerator } from "ai";
 import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession } from "./terminal";
-import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword } from "./db";
+import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts } from "./db";
 import { createTerminalAgent, getPendingApprovals, resolveApproval } from "./agent";
 import dashscope from "./dashscope-model";
 
@@ -67,6 +67,51 @@ const app = new Elysia()
   .delete("/api/auto-approvals/:id", ({ params }) => {
     deleteAutoApproval(Number(params.id));
     return { success: true };
+  })
+  
+  // Conversation history
+  .get("/api/conversations", ({ query }) => {
+    return getConversations({
+      search: query.search as string | undefined,
+      limit: query.limit ? Number(query.limit) : undefined,
+      offset: query.offset ? Number(query.offset) : undefined,
+      server_id: query.server_id ? Number(query.server_id) : undefined,
+    });
+  })
+  .get("/api/conversations/:id", ({ params }) => {
+    const conv = getConversation(Number(params.id));
+    if (!conv) return new Response("Not found", { status: 404 });
+    return conv;
+  })
+  .post("/api/conversations", ({ body }) => {
+    const { server_id, title, messages } = body as { server_id?: number; title: string; messages: string };
+    return createConversation({ server_id, title, messages });
+  }, {
+    body: t.Object({
+      server_id: t.Optional(t.Number()),
+      title: t.String(),
+      messages: t.String(),
+    })
+  })
+  .put("/api/conversations/:id", ({ params, body }) => {
+    const { title, messages } = body as { title?: string; messages?: string };
+    updateConversation(Number(params.id), { title, messages });
+    return { success: true };
+  }, {
+    body: t.Object({
+      title: t.Optional(t.String()),
+      messages: t.Optional(t.String()),
+    })
+  })
+  .delete("/api/conversations/:id", ({ params }) => {
+    deleteConversation(Number(params.id));
+    return { success: true };
+  })
+  .get("/api/prompts/recent", ({ query }) => {
+    return getRecentPrompts({
+      server_id: query.server_id ? Number(query.server_id) : undefined,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
   })
   
   // Approval management

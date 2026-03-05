@@ -23,3 +23,12 @@ export interface ApprovalRequest {
   id: string
   command: string
 }
+
+export interface Conversation {
+  id: number
+  server_id?: number
+  title: string
+  messages?: string
+  created_at: string
+  updated_at: string
+}
