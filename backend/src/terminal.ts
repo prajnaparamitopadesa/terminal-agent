@@ -85,49 +85,189 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number) {
   }
 }
 
-/** Strip ANSI escape sequences from text */
-export function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[\?]?[0-9;]*[a-zA-Z]/g, '')  // CSI sequences (incl. private modes)
-    .replace(/\x1b\].*?\x07/g, '')      // OSC sequences
-    .replace(/\x1b[()][AB012]/g, '')     // Character set selection
-    .replace(/\x1b[>=]/g, '')            // Keypad modes
-    .replace(/\r/g, '');                 // Carriage returns
-}
+// ==========================================
+// Agent SSH connections (independent of terminal)
+// ==========================================
 
-export function getScreenContent(sessionId: string): string {
-  const session = sessions.get(sessionId);
-  if (!session) return "";
-  return stripAnsi(session.screenBuffer.slice(-50).join(""));
-}
+const agentClients = new Map<string, Client>();
 
-export async function runCommandAndWait(
+export async function ensureAgentConnection(
   sessionId: string,
-  command: string,
-  timeout = 30000
-): Promise<string> {
-  const session = sessions.get(sessionId);
-  if (!session?.stream) throw new Error("No active terminal session");
-  
-  const marker = `__CMD_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}__`;
-  const output: string[] = [];
-  
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      session.stream.removeListener("data", handler);
-      resolve(stripAnsi(output.join("")));
-    }, timeout);
-    
-    const handler = (data: Buffer) => {
-      const text = data.toString();
-      output.push(text);
-      if (text.includes(marker)) {
-        clearTimeout(timer);
-        session.stream.removeListener("data", handler);
-        resolve(stripAnsi(output.join("")));
-      }
-    };
-    
-    session.stream.on("data", handler);
-    session.stream.write(`${command}; echo "${marker}"\r`);
+  config: { host: string; port: number; username: string; password?: string }
+): Promise<void> {
+  const existing = agentClients.get(sessionId);
+  if (existing) return;
+
+  const client = new Client();
+  await new Promise<void>((resolve, reject) => {
+    client
+      .on("ready", () => {
+        agentClients.set(sessionId, client);
+        resolve();
+      })
+      .on("error", (err) => {
+        reject(err);
+      })
+      .on("close", () => {
+        agentClients.delete(sessionId);
+      })
+      .connect({
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        password: config.password,
+        readyTimeout: 10000,
+      });
   });
+}
+
+export function removeAgentConnection(sessionId: string) {
+  const client = agentClients.get(sessionId);
+  if (client) {
+    try { client.end(); } catch { /* ignore */ }
+    agentClients.delete(sessionId);
+  }
+}
+
+// ==========================================
+// Exec stream management
+// ==========================================
+
+interface ExecStream {
+  stream: any;
+  output: string;
+  closed: boolean;
+  exitCode: number | null;
+  lastOutputTime: number;
+  pendingResolves: Array<(data: string | null) => void>;
+  buffer: string[];
+  sessionId: string;
+}
+
+const execStreams = new Map<string, ExecStream>();
+
+export async function execCommand(sessionId: string, command: string): Promise<string> {
+  const client = agentClients.get(sessionId);
+  if (!client) throw new Error("Agent not connected");
+
+  const streamId = `exec_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    client.exec(command, { pty: true }, (err: Error | undefined, stream: any) => {
+      if (err) return reject(err);
+
+      const execStream: ExecStream = {
+        stream,
+        output: '',
+        closed: false,
+        exitCode: null,
+        lastOutputTime: Date.now(),
+        pendingResolves: [],
+        buffer: [],
+        sessionId,
+      };
+
+      stream.on('data', (data: Buffer) => {
+        const text = data.toString();
+        execStream.output += text;
+        execStream.lastOutputTime = Date.now();
+
+        if (execStream.pendingResolves.length > 0) {
+          const res = execStream.pendingResolves.shift()!;
+          res(text);
+        } else {
+          execStream.buffer.push(text);
+        }
+      });
+
+      stream.stderr?.on('data', (data: Buffer) => {
+        const text = data.toString();
+        execStream.output += text;
+        execStream.lastOutputTime = Date.now();
+
+        if (execStream.pendingResolves.length > 0) {
+          const res = execStream.pendingResolves.shift()!;
+          res(text);
+        } else {
+          execStream.buffer.push(text);
+        }
+      });
+
+      stream.on('close', (code: number) => {
+        execStream.closed = true;
+        execStream.exitCode = code;
+        for (const res of execStream.pendingResolves) {
+          res(null);
+        }
+        execStream.pendingResolves = [];
+      });
+
+      execStreams.set(streamId, execStream);
+      resolve(streamId);
+    });
+  });
+}
+
+/**
+ * Read the next chunk of output from an exec stream.
+ * Returns null on timeout or stream close.
+ */
+export function readNextChunk(streamId: string, timeoutMs: number): Promise<string | null> {
+  const execStream = execStreams.get(streamId);
+  if (!execStream) return Promise.resolve(null);
+
+  if (execStream.buffer.length > 0) {
+    return Promise.resolve(execStream.buffer.shift()!);
+  }
+
+  if (execStream.closed) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      const idx = execStream.pendingResolves.indexOf(wrappedResolve);
+      if (idx >= 0) execStream.pendingResolves.splice(idx, 1);
+      resolve(null);
+    }, timeoutMs);
+
+    const wrappedResolve = (data: string | null) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      resolve(data);
+    };
+
+    execStream.pendingResolves.push(wrappedResolve);
+  });
+}
+
+export function getExecStreamInfo(streamId: string): { output: string; closed: boolean; exitCode: number | null } | null {
+  const execStream = execStreams.get(streamId);
+  if (!execStream) return null;
+  return {
+    output: execStream.output,
+    closed: execStream.closed,
+    exitCode: execStream.exitCode,
+  };
+}
+
+export function sendExecInput(streamId: string, input: string): boolean {
+  const execStream = execStreams.get(streamId);
+  if (execStream?.stream && !execStream.closed) {
+    execStream.stream.write(input);
+    return true;
+  }
+  return false;
+}
+
+export function closeExecStream(streamId: string): void {
+  const execStream = execStreams.get(streamId);
+  if (execStream) {
+    if (!execStream.closed) {
+      try { execStream.stream.close(); } catch { /* ignore */ }
+    }
+    execStreams.delete(streamId);
+  }
 }

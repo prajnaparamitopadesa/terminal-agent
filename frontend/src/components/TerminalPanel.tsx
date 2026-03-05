@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -9,10 +9,9 @@ import { Wifi, WifiOff, Lock } from 'lucide-react'
 interface Props {
   server: Server
   sessionId: string
-  onScreenContent: (getter: () => string) => void
 }
 
-export default function TerminalPanel({ server, sessionId, onScreenContent }: Props) {
+export default function TerminalPanel({ server, sessionId }: Props) {
   const termRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -22,13 +21,6 @@ export default function TerminalPanel({ server, sessionId, onScreenContent }: Pr
   const [password, setPassword] = useState('')
   const [rememberPassword, setRememberPassword] = useState(server?.has_password || false)
   const [showPasswordInput, setShowPasswordInput] = useState(true)
-  const screenBufferRef = useRef<string>('')
-
-  const getScreen = useCallback(() => screenBufferRef.current.slice(-3000), [])
-
-  useEffect(() => {
-    onScreenContent(getScreen)
-  }, [onScreenContent, getScreen])
 
   useEffect(() => {
     if (!termRef.current) return
@@ -118,10 +110,6 @@ export default function TerminalPanel({ server, sessionId, onScreenContent }: Pr
       const msg = JSON.parse(evt.data)
       if (msg.type === 'data') {
         xtermRef.current?.write(msg.data)
-        screenBufferRef.current += msg.data
-        if (screenBufferRef.current.length > 50000) {
-          screenBufferRef.current = screenBufferRef.current.slice(-30000)
-        }
         if (!connected) {
           setConnected(true)
           setConnecting(false)

@@ -1,14 +1,14 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { generateText, createAgentUIStreamResponse, createIdGenerator } from "ai";
-import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession } from "./terminal";
+import { createSession, connectSSH, sendInput, resizeTerminal, removeSession } from "./terminal";
 import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts } from "./db";
-import { createTerminalAgent, getPendingApprovals, resolveApproval } from "./agent";
+import { createTerminalAgent, getPendingUserInputs, resolveUserInput } from "./agent";
 import dashscope from "./dashscope-model";
 
 // Map of sessionId -> set of WebSocket connections for terminal
 const terminalWsMap = new Map<string, Set<any>>();
-// Map of sessionId -> set of WebSocket connections for agent approvals
+// Map of sessionId -> set of WebSocket connections for agent events (user input requests)
 const agentWsMap = new Map<string, Set<any>>();
 
 const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
@@ -114,13 +114,13 @@ const app = new Elysia()
     });
   })
   
-  // Approval management
-  .get("/api/approvals", () => getPendingApprovals())
-  .post("/api/approvals/:id/resolve", ({ params, body }) => {
-    resolveApproval(params.id, (body as any).approved);
+  // User input management (for request-user-input tool)
+  .get("/api/user-inputs", () => getPendingUserInputs())
+  .post("/api/user-inputs/:id/resolve", ({ params, body }) => {
+    resolveUserInput(params.id, (body as any).input);
     return { success: true };
   }, {
-    body: t.Object({ approved: t.Boolean() })
+    body: t.Object({ input: t.String() })
   })
   
   // Convert to regex using AI
@@ -204,21 +204,10 @@ Return only the regex pattern, no explanation.`,
       serverId?: number;
     };
 
-    // Get sudo password from database
-    const sudoPassword = serverId ? getServerPassword(serverId) : undefined;
     const model = dashscope(process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus");
     const agent = createTerminalAgent(model, {
       sessionId,
       serverId: serverId || 0,
-      sudoPassword: sudoPassword || undefined,
-      onApprovalNeeded: (approval) => {
-        const connections = agentWsMap.get(sessionId);
-        if (connections) {
-          for (const conn of connections) {
-            try { conn.send({ type: "approval_needed", ...approval }); } catch (e) { console.error("WS send error:", e); }
-          }
-        }
-      },
     });
 
     return createAgentUIStreamResponse({
@@ -230,11 +219,10 @@ Return only the regex pattern, no explanation.`,
     body: t.Object({
       messages: t.Array(t.Any()),
       serverId: t.Optional(t.Number()),
-      sessionApprovals: t.Optional(t.Array(t.String())),
     })
   })
   
-  // Agent WebSocket for real-time approval notifications
+  // Agent WebSocket for real-time user input notifications
   .ws("/ws/agent/:sessionId", {
     open(ws) {
       const { sessionId } = ws.data.params;
@@ -244,11 +232,9 @@ Return only the regex pattern, no explanation.`,
       agentWsMap.get(sessionId)!.add(ws);
     },
     message(ws, message: any) {
-      // Handle approval responses
-      if (message.type === "approve") {
-        resolveApproval(message.id, true);
-      } else if (message.type === "reject") {
-        resolveApproval(message.id, false);
+      // Handle user input responses
+      if (message.type === "user-input") {
+        resolveUserInput(message.id, message.input);
       }
     },
     close(ws) {
