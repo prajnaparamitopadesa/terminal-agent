@@ -110,7 +110,7 @@ Return only the regex pattern, no explanation.`,
       if (message.type === "connect") {
         const { host, port, username, password, serverId } = message;
         // Use provided password or fall back to saved password
-        const effectivePassword = password || (serverId ? getServerPassword(serverId) : null);
+        const effectivePassword = password ?? (serverId ? getServerPassword(serverId) : null);
         createSession(sessionId, serverId || 0);
         connectSSH(
           sessionId,

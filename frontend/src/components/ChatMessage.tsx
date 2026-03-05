@@ -51,8 +51,8 @@ function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command }),
       })
-    } catch {
-      console.error('Failed to send command to terminal')
+    } catch (err) {
+      console.error('Failed to send command to terminal', err)
     }
   }
 
@@ -175,8 +175,8 @@ function RunCommandResult({ command, output, state, error, sessionId, serverId, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command }),
       })
-    } catch {
-      console.error('Failed to send command to terminal')
+    } catch (err) {
+      console.error('Failed to send command to terminal', err)
     }
   }
 

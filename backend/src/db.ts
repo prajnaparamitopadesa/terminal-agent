@@ -18,8 +18,10 @@ db.run(`
 // Migration: add saved_password column if not exists
 try {
   db.run(`ALTER TABLE servers ADD COLUMN saved_password TEXT`);
-} catch {
-  // Column already exists
+} catch (e: any) {
+  if (!String(e?.message || e).includes('duplicate column')) {
+    console.error('Migration error:', e);
+  }
 }
 
 db.run(`
