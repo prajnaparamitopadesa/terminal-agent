@@ -53,6 +53,12 @@ async function collectExecOutput(
   const startTime = Date.now();
   let lastDataTime = Date.now();
 
+  // Pre-compile prompt regex once
+  let compiledPromptRegex: RegExp | null = null;
+  if (promptRegex) {
+    try { compiledPromptRegex = new RegExp(promptRegex); } catch { /* invalid regex */ }
+  }
+
   while (true) {
     const elapsed = Date.now() - startTime;
     if (elapsed >= timeout) break;
@@ -69,12 +75,10 @@ async function collectExecOutput(
       onChunk?.(info.output);
 
       // Check prompt regex on new data
-      if (handleInput && promptRegex) {
-        try {
-          if (new RegExp(promptRegex).test(info.output.slice(-500))) {
-            return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
-          }
-        } catch { /* invalid regex, ignore */ }
+      if (handleInput && compiledPromptRegex) {
+        if (compiledPromptRegex.test(info.output.slice(-500))) {
+          return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
+        }
       }
     } else {
       // No data received within wait time
@@ -84,12 +88,10 @@ async function collectExecOutput(
       const idleTime = Date.now() - lastDataTime;
       if (handleInput && idleTime >= promptTimeout) {
         // Check prompt regex one more time
-        if (promptRegex) {
-          try {
-            if (new RegExp(promptRegex).test(info.output.slice(-500))) {
-              return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
-            }
-          } catch { /* invalid regex */ }
+        if (compiledPromptRegex) {
+          if (compiledPromptRegex.test(info.output.slice(-500))) {
+            return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
+          }
         }
         // Return on idle timeout regardless
         return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
@@ -353,7 +355,7 @@ export function createTerminalAgent(model: LanguageModel, ctx: AgentContext) {
 
 工作流程示例：
 1. 普通命令：exec("ls -la") → 获取输出
-2. sudo 命令：exec("sudo apt update", handleInput=true, promptRegex="\\\\[sudo\\\\]|password") → 检测到密码提示 → send-password(streamId) → 获取输出
+2. sudo 命令：exec("sudo apt update", handleInput=true, promptRegex="\\[sudo\\]|password") → 检测到密码提示 → send-password(streamId) → 获取输出
 3. 需要用户输入密码：exec(...) → 检测到提示 → request-user-input(streamId, "请输入密码", isPassword=true)
 
 在运行命令之前，请先解释你要做什么。`;

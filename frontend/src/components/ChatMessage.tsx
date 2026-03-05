@@ -4,9 +4,6 @@ import { UIMessage, isTextUIPart, isToolOrDynamicToolUIPart } from 'ai'
 import { AnsiUp } from 'ansi_up'
 import ApprovalDialog from './ApprovalDialog'
 
-const ansiConverter = new AnsiUp()
-ansiConverter.use_classes = false
-
 interface Props {
   message: UIMessage
   sessionId: string
@@ -16,9 +13,11 @@ interface Props {
   onUserInputSubmit?: (requestId: string, input: string) => void
 }
 
-/** Convert ANSI text to safe HTML */
+/** Convert ANSI text to safe HTML (new instance per call to avoid state leaks) */
 function ansiToHtml(text: string): string {
-  return ansiConverter.ansi_to_html(text)
+  const converter = new AnsiUp()
+  converter.use_classes = false
+  return converter.ansi_to_html(text)
 }
 
 function extractCodeBlocks(content: string): Array<{ type: 'text' | 'code'; content: string; lang?: string }> {
@@ -237,7 +236,7 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
       {state === 'output-available' && closed !== undefined && (
         <div className="px-3 py-1 text-xs text-gray-500 border-t border-gray-800 flex items-center gap-2">
           {closed ? (
-            <span>退出码: {exitCode ?? '?'}</span>
+            <span>退出码: {exitCode ?? 'N/A'}</span>
           ) : streamId ? (
             <span className="text-yellow-400">⏳ 流仍然打开 (streamId: {streamId.slice(0, 12)}...)</span>
           ) : null}

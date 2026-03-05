@@ -223,13 +223,18 @@ export function readNextChunk(streamId: string, timeoutMs: number): Promise<stri
   if (execStream.closed) return Promise.resolve(null);
 
   return new Promise((resolve) => {
+    let resolved = false;
     const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
       const idx = execStream.pendingResolves.indexOf(wrappedResolve);
       if (idx >= 0) execStream.pendingResolves.splice(idx, 1);
       resolve(null);
     }, timeoutMs);
 
     const wrappedResolve = (data: string | null) => {
+      if (resolved) return;
+      resolved = true;
       clearTimeout(timer);
       resolve(data);
     };
