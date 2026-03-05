@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Server } from '../types'
 import { Monitor, Plus, Trash2, Terminal, Server as ServerIcon } from 'lucide-react'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { Select } from '../components/ui/select'
 
 export default function ServerList() {
   const [servers, setServers] = useState<Server[]>([])
@@ -41,13 +44,10 @@ export default function ServerList() {
             <Terminal className="w-8 h-8 text-green-400" />
             <h1 className="text-2xl font-bold text-white">终端助手</h1>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg transition-colors"
-          >
+          <Button onClick={() => setShowForm(!showForm)} variant="success">
             <Plus className="w-4 h-4" />
             添加服务器
-          </button>
+          </Button>
         </div>
 
         {showForm && (
@@ -56,72 +56,60 @@ export default function ServerList() {
             <form onSubmit={handleAdd} className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">名称（可选）</label>
-                <input
+                <Input
                   type="text"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="我的服务器"
-                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-500"
                 />
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">用户名 *</label>
-                <input
+                <Input
                   type="text"
                   required
                   value={form.username}
                   onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
                   placeholder="root"
-                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-500"
                 />
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">主机地址 *</label>
-                <input
+                <Input
                   type="text"
                   required
                   value={form.host}
                   onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
                   placeholder="192.168.1.1"
-                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-500"
                 />
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">端口</label>
-                <input
+                <Input
                   type="number"
                   value={form.port}
                   onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
                   placeholder="22"
-                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-500"
                 />
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">默认终端</label>
-                <select
+                <Select
                   value={form.terminal_type}
                   onChange={e => setForm(f => ({ ...f, terminal_type: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-green-500"
                 >
                   <option value="bash">bash</option>
                   <option value="zsh">zsh</option>
                   <option value="sh">sh</option>
-                </select>
+                </Select>
               </div>
               <div className="col-span-2 flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-                >
+                <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>
                   取消
-                </button>
-                <button
-                  type="submit"
-                  className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg transition-colors"
-                >
+                </Button>
+                <Button type="submit" variant="success" size="lg">
                   添加
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -148,19 +136,18 @@ export default function ServerList() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handleConnect(server)}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-colors"
-                  >
+                  <Button onClick={() => handleConnect(server)} variant="default">
                     <Terminal className="w-4 h-4" />
                     连接
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => handleDelete(server.id)}
-                    className="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-gray-800 transition-colors"
+                    variant="ghost"
+                    size="icon"
+                    className="text-gray-500 hover:text-red-400 hover:bg-gray-800"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))

@@ -3,6 +3,16 @@ import { Copy, ChevronDown, ChevronUp, Settings, Terminal, Check } from 'lucide-
 import { UIMessage, isTextUIPart, isToolOrDynamicToolUIPart } from 'ai'
 import { AnsiUp } from 'ansi_up'
 import ApprovalDialog from './ApprovalDialog'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Code } from './ui/code'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
 
 interface Props {
   message: UIMessage
@@ -47,7 +57,6 @@ function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
   serverId: number
   onAddSessionApproval: (command: string) => void
 }) {
-  const [showMenu, setShowMenu] = useState(false)
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
 
   const copyCommand = () => {
@@ -66,7 +75,6 @@ function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
         server_id: scope === 'server' ? serverId : undefined,
       }),
     })
-    setShowMenu(false)
   }
 
   return (
@@ -75,57 +83,43 @@ function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
         <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
           <span className="text-xs text-gray-400 font-mono">bash</span>
           <div className="flex items-center gap-1">
-            <button
+            <Button
+              variant="ghost"
+              size="iconSm"
               onClick={copyCommand}
               title="复制"
-              className="text-gray-400 hover:text-white p-1 rounded transition-colors"
             >
               <Copy className="w-3 h-3" />
-            </button>
-            <div className="relative">
-              <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="text-gray-400 hover:text-white p-1 rounded transition-colors"
-              >
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              {showMenu && (
-                <div className="absolute right-0 top-6 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 w-64 py-1">
-                  <button
-                    onClick={() => { addGlobalApproval('global'); setShowMenu(false) }}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-                  >
-                    允许此命令（所有服务器）
-                  </button>
-                  <button
-                    onClick={() => { addGlobalApproval('server'); setShowMenu(false) }}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-                  >
-                    允许此命令（仅此服务器）
-                  </button>
-                  <button
-                    onClick={() => { onAddSessionApproval(command); setShowMenu(false) }}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-                  >
-                    允许此命令（仅此会话）
-                  </button>
-                  <hr className="border-gray-600 my-1" />
-                  <button
-                    onClick={() => { setShowApprovalDialog(true); setShowMenu(false) }}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-                  >
-                    允许命令...
-                  </button>
-                </div>
-              )}
-            </div>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="iconSm">
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onSelect={() => addGlobalApproval('global')}>
+                  允许此命令（所有服务器）
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => addGlobalApproval('server')}>
+                  允许此命令（仅此服务器）
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onAddSessionApproval(command)}>
+                  允许此命令（仅此会话）
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setShowApprovalDialog(true)}>
+                  允许命令...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         <pre className="p-3 text-sm text-green-300 font-mono overflow-x-auto whitespace-pre-wrap break-all">
           {command}
         </pre>
       </div>
-      
+
       {showApprovalDialog && (
         <ApprovalDialog
           command={command}
@@ -159,7 +153,6 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
   onAddSessionApproval: (command: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [showMenu, setShowMenu] = useState(false)
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
   const [copied, setCopied] = useState(false)
   const isLongCommand = command.length > 80
@@ -183,7 +176,6 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
         server_id: scope === 'server' ? serverId : undefined,
       }),
     })
-    setShowMenu(false)
   }
 
   const hasOutput = state === 'output-available' && output
@@ -194,39 +186,43 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
       <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <Terminal className="w-3 h-3 text-green-400 flex-shrink-0" />
-          <code className="text-xs text-green-300 font-mono truncate">{displayCommand}</code>
+          <Code className="text-xs truncate">{displayCommand}</Code>
           {isLongCommand && (
-            <button onClick={() => setExpanded(!expanded)} className="text-gray-400 hover:text-white flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="iconSm"
+              onClick={() => setExpanded(!expanded)}
+            >
               {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
+            </Button>
           )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-          <button onClick={copyOutput} title="复制" className="text-gray-400 hover:text-white p-1 rounded transition-colors">
+          <Button variant="ghost" size="iconSm" onClick={copyOutput} title="复制">
             {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-          </button>
-          <div className="relative">
-            <button onClick={() => setShowMenu(!showMenu)} className="text-gray-400 hover:text-white p-1 rounded transition-colors">
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            {showMenu && (
-              <div className="absolute right-0 top-6 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 w-64 py-1">
-                <button onClick={() => { addAutoApproval('global'); setShowMenu(false) }} className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
-                  允许此命令（所有服务器）
-                </button>
-                <button onClick={() => { addAutoApproval('server'); setShowMenu(false) }} className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
-                  允许此命令（仅此服务器）
-                </button>
-                <button onClick={() => { onAddSessionApproval(command); setShowMenu(false) }} className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
-                  允许此命令（仅此会话）
-                </button>
-                <hr className="border-gray-600 my-1" />
-                <button onClick={() => { setShowApprovalDialog(true); setShowMenu(false) }} className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
-                  允许命令...
-                </button>
-              </div>
-            )}
-          </div>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="iconSm">
+                <ChevronDown className="w-3 h-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onSelect={() => addAutoApproval('global')}>
+                允许此命令（所有服务器）
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => addAutoApproval('server')}>
+                允许此命令（仅此服务器）
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onAddSessionApproval(command)}>
+                允许此命令（仅此会话）
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setShowApprovalDialog(true)}>
+                允许命令...
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       {/* Result */}
@@ -257,7 +253,7 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
 
 export default function ChatMessage({ message, sessionId, serverId, onAddSessionApproval, onApproveToolCall, onUserInputSubmit }: Props) {
   const isUser = message.role === 'user'
-  
+
   const renderContent = (content: string) => {
     const parts = extractCodeBlocks(content)
     return parts.map((part, i) => {
@@ -299,6 +295,14 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
 
   return (
     <div className="space-y-2">
+      {/* Text parts rendered FIRST, tool calls rendered below */}
+      {textParts.length > 0 && (
+        <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[95%]">
+          {textParts.map((part, i) => (
+            <div key={i}>{renderContent(part.text)}</div>
+          ))}
+        </div>
+      )}
       {toolParts.map((part, i) => {
         const name = 'toolName' in part ? part.toolName : part.type.replace('tool-', '')
         const state = part.state
@@ -332,7 +336,7 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
                 <span className="font-mono">{String(name)}</span>
                 <span className="text-red-300">— 已拒绝</span>
               </div>
-              <code className="text-xs text-red-200 block bg-black/30 rounded px-2 py-1">{command}</code>
+              <Code className="text-xs text-red-200 block bg-black/30 rounded px-2 py-1">{command}</Code>
             </div>
           )
         }
@@ -412,13 +416,6 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
           </div>
         )
       })}
-      {textParts.length > 0 && (
-        <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[95%]">
-          {textParts.map((part, i) => (
-            <div key={i}>{renderContent(part.text)}</div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -431,77 +428,72 @@ function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, on
   serverId: number
   onAddSessionApproval: (command: string) => void
 }) {
-  const [showMenu, setShowMenu] = useState(false)
-
   return (
     <div className="bg-yellow-900/40 border border-yellow-700 rounded-lg p-3 my-2">
       <p className="text-yellow-300 text-xs font-medium mb-1">⚠️ {toolName} 需要审批</p>
-      <code className="text-xs text-yellow-200 block bg-black/30 rounded px-2 py-1 mb-2 break-all">
+      <Code className="text-xs text-yellow-200 block bg-black/30 rounded px-2 py-1 mb-2 break-all">
         {command}
-      </code>
+      </Code>
       <div className="flex gap-2">
         <div className="flex-1 flex relative">
-          <button
+          <Button
             onClick={() => onApprove?.(approvalId, true)}
-            className="flex-1 flex items-center justify-center gap-1 bg-green-700 hover:bg-green-600 text-white text-xs py-1 rounded-l"
+            variant="success"
+            size="sm"
+            className="flex-1 rounded-r-none"
           >
             ✓ 允许
-          </button>
-          <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="bg-green-700 hover:bg-green-600 text-white text-xs py-1 px-1.5 rounded-r border-l border-green-600"
-          >
-            <ChevronDown className="w-3 h-3" />
-          </button>
-          {showMenu && (
-            <div className="absolute left-0 bottom-full mb-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 w-64 py-1">
-              <button
-                onClick={async () => {
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="success" size="sm" className="rounded-l-none border-l border-green-600 px-1.5">
+                <ChevronDown className="w-3 h-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-64">
+              <DropdownMenuItem
+                onSelect={async () => {
                   await fetch('/api/auto-approvals', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pattern: command, is_regex: false, scope: 'global', description: '完全匹配' }),
                   })
-                  setShowMenu(false)
                   onApprove?.(approvalId, true)
                 }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
               >
                 允许完全匹配的命令
-              </button>
-              <button
-                onClick={async () => {
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={async () => {
                   await fetch('/api/auto-approvals', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pattern: command, is_regex: false, scope: 'server', server_id: serverId, description: '完全匹配（仅此服务器）' }),
                   })
-                  setShowMenu(false)
                   onApprove?.(approvalId, true)
                 }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
               >
                 允许完全匹配的命令（仅此服务器）
-              </button>
-              <button
-                onClick={() => {
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
                   onAddSessionApproval(command)
-                  setShowMenu(false)
                   onApprove?.(approvalId, true)
                 }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
               >
                 允许完全匹配的命令（仅本次会话）
-              </button>
-            </div>
-          )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <button
+        <Button
           onClick={() => onApprove?.(approvalId, false)}
-          className="flex-1 flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 text-white text-xs py-1 rounded"
+          variant="destructive"
+          size="sm"
+          className="flex-1"
         >
           ✗ 拒绝
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -536,7 +528,7 @@ function UserInputTool({ prompt, isPassword, state, status, streamId, output, on
       <div className="bg-blue-900/40 border border-blue-700 rounded-lg p-3 my-2">
         <p className="text-blue-300 text-xs font-medium mb-2">🔑 {prompt}</p>
         <div className="flex gap-2">
-          <input
+          <Input
             type={isPassword ? 'password' : 'text'}
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
@@ -547,19 +539,20 @@ function UserInputTool({ prompt, isPassword, state, status, streamId, output, on
               }
             }}
             placeholder={isPassword ? '输入密码...' : '输入内容...'}
-            className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
+            className="flex-1 h-8 text-xs"
           />
-          <button
+          <Button
             onClick={() => {
               if (inputValue && streamId) {
                 onSubmit?.(streamId, inputValue)
                 setInputValue('')
               }
             }}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs"
+            variant="default"
+            size="sm"
           >
             发送
-          </button>
+          </Button>
         </div>
       </div>
     )

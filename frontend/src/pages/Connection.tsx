@@ -8,6 +8,8 @@ import ChatMessage from '../components/ChatMessage'
 import AutoApprovalManager from '../components/AutoApprovalManager'
 import HistoryPanel from '../components/HistoryPanel'
 import { Server, Conversation } from '../types'
+import { Button } from '../components/ui/button'
+import { Textarea } from '../components/ui/textarea'
 
 export default function Connection() {
   const { serverId } = useParams()
@@ -298,27 +300,29 @@ export default function Connection() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="text-gray-400 hover:text-white transition-colors">
+          <Button onClick={() => navigate('/')} variant="ghost" size="iconSm">
             <ArrowLeft className="w-5 h-5" />
-          </button>
+          </Button>
           <TerminalIcon className="w-5 h-5 text-green-400" />
           <span className="font-semibold">{server?.name || server?.host || '终端'}</span>
           {server && <span className="text-gray-400 text-sm">{server.username}@{server.host}:{server.port}</span>}
-          <button
+          <Button
             onClick={handleFork}
             title="在新窗口中打开"
-            className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+            variant="ghost"
+            size="iconSm"
           >
             <GitFork className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
-        <button
+        <Button
           onClick={() => setShowApprovalManager(true)}
-          className="flex items-center gap-2 text-gray-400 hover:text-white px-3 py-1 rounded-lg hover:bg-gray-800 transition-colors text-sm"
+          variant="ghost"
+          size="sm"
         >
           <Shield className="w-4 h-4" />
           自动审批
-        </button>
+        </Button>
       </div>
       
       {/* Main content */}
@@ -348,20 +352,23 @@ export default function Connection() {
               <span className="font-medium text-sm">AI 助手</span>
             </div>
             <div className="flex items-center gap-1">
-              <button
+              <Button
                 onClick={() => setShowHistory(!showHistory)}
                 title="历史记录"
-                className={`p-1 rounded-lg transition-colors ${showHistory ? 'text-blue-400 bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                variant="ghost"
+                size="iconSm"
+                className={showHistory ? 'text-blue-400 bg-gray-800' : ''}
               >
                 <History className="w-4 h-4" />
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleNewConversation}
                 title="新对话"
-                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+                variant="ghost"
+                size="iconSm"
               >
                 <Plus className="w-4 h-4" />
-              </button>
+              </Button>
             </div>
           </div>
           
@@ -407,7 +414,7 @@ export default function Connection() {
             {/* Chat input */}
             <form onSubmit={handleChatSubmit} className="p-4 border-t border-gray-700">
               <div className="flex gap-2 items-end">
-                <textarea
+                <Textarea
                   ref={textareaRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
@@ -415,7 +422,7 @@ export default function Connection() {
                   placeholder="向 AI 助手发送消息..."
                   disabled={isLoading}
                   rows={1}
-                  className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-none max-h-32 overflow-y-auto"
+                  className="flex-1 max-h-32 overflow-y-auto"
                   style={{ minHeight: '38px' }}
                   onInput={(e) => {
                     const target = e.target as HTMLTextAreaElement
@@ -423,13 +430,14 @@ export default function Connection() {
                     target.style.height = Math.min(target.scrollHeight, 128) + 'px'
                   }}
                 />
-                <button
+                <Button
                   type="submit"
                   disabled={isLoading || !input.trim()}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0"
+                  size="sm"
+                  className="flex-shrink-0 h-[38px]"
                 >
                   <Send className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
             </form>
             </>
