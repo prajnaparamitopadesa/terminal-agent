@@ -176,7 +176,7 @@ export default function Connection() {
   const handleUsePrompt = (prompt: string) => {
     setInput(prompt)
     setShowHistory(false)
-    setTimeout(() => textareaRef.current?.focus(), 0)
+    requestAnimationFrame(() => textareaRef.current?.focus())
   }
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -205,12 +205,12 @@ export default function Connection() {
         const nextIndex = Math.min(promptHistoryIndex + 1, promptHistory.length - 1)
         setPromptHistoryIndex(nextIndex)
         setInput(promptHistory[nextIndex])
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           if (textareaRef.current) {
             textareaRef.current.selectionStart = 0
             textareaRef.current.selectionEnd = 0
           }
-        }, 0)
+        })
       }
     } else if (e.key === 'ArrowDown') {
       // Only trigger at the last line
@@ -226,13 +226,13 @@ export default function Connection() {
         } else {
           setInput(promptHistory[nextIndex])
         }
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           if (textareaRef.current) {
             const len = textareaRef.current.value.length
             textareaRef.current.selectionStart = len
             textareaRef.current.selectionEnd = len
           }
-        }, 0)
+        })
       }
     }
   }

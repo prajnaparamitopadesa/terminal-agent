@@ -9,7 +9,7 @@ interface Props {
 }
 
 function formatTime(dateStr: string) {
-  const date = new Date(dateStr + 'Z')
+  const date = new Date(dateStr.includes('T') || dateStr.includes('Z') ? dateStr : dateStr + 'Z')
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const minutes = Math.floor(diff / 60000)
@@ -31,18 +31,21 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
   const [initialLoading, setInitialLoading] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef(0)
+  const loadingRef = useRef(false)
   const PAGE_SIZE = 20
 
-  const fetchConversations = useCallback(async (reset = false) => {
-    if (loading) return
+  const fetchConversations = useCallback(async (reset = false, searchOverride?: string) => {
+    if (loadingRef.current) return
     const offset = reset ? 0 : offsetRef.current
+    loadingRef.current = true
     setLoading(true)
     try {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
         offset: String(offset),
       })
-      if (search.trim()) params.set('search', search.trim())
+      const searchVal = searchOverride !== undefined ? searchOverride : search
+      if (searchVal.trim()) params.set('search', searchVal.trim())
 
       const res = await fetch(`/api/conversations?${params}`)
       const data: Conversation[] = await res.json()
@@ -58,23 +61,19 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
     } catch (err) {
       console.error('Failed to fetch conversations', err)
     } finally {
+      loadingRef.current = false
       setLoading(false)
       setInitialLoading(false)
     }
-  }, [search, loading])
+  }, [search])
 
   // Reset and fetch when search changes
   useEffect(() => {
     offsetRef.current = 0
     setHasMore(true)
     setInitialLoading(true)
-    fetchConversations(true)
+    fetchConversations(true, search)
   }, [search])
-
-  // Initial load
-  useEffect(() => {
-    fetchConversations(true)
-  }, [])
 
   // Infinite scroll
   const handleScroll = useCallback(() => {

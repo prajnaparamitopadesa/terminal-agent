@@ -174,7 +174,9 @@ export function getRecentPrompts(options: { server_id?: number; limit?: number }
           break; // Only first user message per conversation
         }
       }
-    } catch {}
+    } catch (e) {
+      console.error('Failed to parse conversation messages:', e);
+    }
   }
   return prompts;
 }
