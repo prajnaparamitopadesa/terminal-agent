@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { streamText, createAgentUIStreamResponse, createIdGenerator } from "ai";
 import { createSession, connectSSH, sendInput, resizeTerminal, getScreenContent, removeSession } from "./terminal";
-import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval } from "./db";
+import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword } from "./db";
 import { createTerminalAgent, getPendingApprovals, resolveApproval } from "./agent";
 import dashscope from "./dashscope-model";
 
@@ -31,6 +31,15 @@ const app = new Elysia()
   .delete("/api/servers/:id", ({ params }) => {
     deleteServer(Number(params.id));
     return { success: true };
+  })
+  .put("/api/servers/:id/password", ({ params, body }) => {
+    const { password } = body as { password: string | null };
+    updateServerPassword(Number(params.id), password);
+    return { success: true };
+  }, {
+    body: t.Object({
+      password: t.Union([t.String(), t.Null()]),
+    })
   })
   
   // Auto-approval CRUD
@@ -100,10 +109,12 @@ Return only the regex pattern, no explanation.`,
       const { sessionId } = ws.data.params;
       if (message.type === "connect") {
         const { host, port, username, password, serverId } = message;
+        // Use provided password or fall back to saved password
+        const effectivePassword = password ?? (serverId ? getServerPassword(serverId) : null);
         createSession(sessionId, serverId || 0);
         connectSSH(
           sessionId,
-          { host, port: port || 22, username, password },
+          { host, port: port || 22, username, password: effectivePassword || undefined },
           (data) => {
             const connections = terminalWsMap.get(sessionId);
             if (connections) {
@@ -145,17 +156,18 @@ Return only the regex pattern, no explanation.`,
   // Agent chat endpoint
   .post("/api/agent/:sessionId/chat", async ({ params, body }) => {
     const { sessionId } = params;
-    const { messages, serverId, sudoPassword } = body as {
+    const { messages, serverId } = body as {
       messages: any[];
       serverId?: number;
-      sudoPassword?: string;
     };
 
+    // Get sudo password from database
+    const sudoPassword = serverId ? getServerPassword(serverId) : undefined;
     const model = dashscope(process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus");
     const agent = createTerminalAgent(model, {
       sessionId,
       serverId: serverId || 0,
-      sudoPassword,
+      sudoPassword: sudoPassword || undefined,
       onApprovalNeeded: (approval) => {
         const connections = agentWsMap.get(sessionId);
         if (connections) {
@@ -176,7 +188,6 @@ Return only the regex pattern, no explanation.`,
       messages: t.Array(t.Any()),
       serverId: t.Optional(t.Number()),
       sessionApprovals: t.Optional(t.Array(t.String())),
-      sudoPassword: t.Optional(t.String()),
     })
   })
   

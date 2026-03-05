@@ -74,7 +74,7 @@ function createTools(ctx: AgentContext) {
       }),
       async *execute({ input, press_enter = true }) {
         yield { state: "loading" as const };
-        sendInput(ctx.sessionId, input + (press_enter ? "\n" : ""));
+        sendInput(ctx.sessionId, input + (press_enter ? "\r" : ""));
         await new Promise((r) => setTimeout(r, 1000));
         const screen = getScreenContent(ctx.sessionId);
         yield { state: "ready" as const, result: { screen: screen.slice(-2000), sent: input } };
@@ -112,7 +112,8 @@ export function createTerminalAgent(model: LanguageModel, ctx: AgentContext) {
 运行 sudo 命令时，先使用 run-command，然后在命令等待输入时用 send-input 提供密码。${ctx.sudoPassword ? `\n此服务器的 sudo/su 密码是：${ctx.sudoPassword}` : ""}
 对于 MySQL REPL，先运行 mysql 命令，然后用 send-input 发送后续 SQL 命令。
 在运行命令之前，请先解释你要做什么。
-所有命令在执行前都需要审批——这由工具自动处理。`;
+所有命令在执行前都需要审批——这由工具自动处理。
+在开始处理用户的第一个请求时，请先调用 get-screen 工具获取当前终端屏幕内容，了解终端的当前状态。`;
 
   return new ToolLoopAgent({
     model,
