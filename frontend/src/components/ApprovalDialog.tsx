@@ -46,9 +46,7 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
       const data = await res.json()
       if (data.regex) {
         // Record this attempt in history so next call can use it as a rejected example
-        if (requirement) {
-          setHistory(prev => [...prev, { requirement, regex: data.regex }])
-        }
+        setHistory(prev => [...prev, { requirement: requirement || '', regex: data.regex }])
         setPattern(data.regex)
         setIsRegex(true)
       }

@@ -130,29 +130,55 @@ const app = new Elysia()
       requirement?: string;
       history?: Array<{ requirement: string; regex: string }>;
     };
-    const requirementClause = requirement?.trim()
-      ? ` based on the requirement: ${requirement.trim()}`
-      : "";
 
-    // Build context from previous rejected attempts
-    let historyClause = "";
+    const systemMessage = `You are a shell command pattern analyzer. Convert a specific shell command into a regex pattern that matches the command's STRUCTURE — the command name and the types of arguments — without including actual argument values.
+
+Rules:
+- Keep the command name literal (e.g., ls, grep, docker, ssh)
+- Replace specific file paths, hostnames, IP addresses, usernames, and other concrete values with generic patterns like \\S+, .+, [\\w.-]+, etc.
+- Keep flag/option names literal when they are part of the structure, or use (\\s+-\\S+)* to match any flags
+- Return ONLY the regex pattern, no explanation
+
+Examples:
+User: Command: ls -la /home/user
+Assistant: ^ls(\\s+-[\\w]+)*(\\s+\\S+)*$
+
+User: Command: grep -r "error message" /var/log/syslog
+Assistant: ^grep(\\s+-[\\w]+)*\\s+\\S+(\\s+\\S+)*$
+
+User: Command: docker run -p 8080:80 --name myapp nginx:latest
+Assistant: ^docker\\s+run(\\s+-\\S+)*(\\s+\\S+)+$
+
+User: Command: ssh -i /home/user/.ssh/id_rsa user@192.168.1.1
+Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
+
+    // Build conversation-style messages array
+    type Message = { role: "system" | "user" | "assistant"; content: string };
+    const messages: Message[] = [{ role: "system", content: systemMessage }];
+
+    // Add history as conversation turns (user requirement → rejected regex)
     if (history && history.length > 0) {
-      const examples = history
-        .map(h => {
-          // Escape newlines to prevent prompt injection
-          const req = h.requirement.replace(/\n/g, ' ').slice(0, 200);
-          const rx = h.regex.replace(/\n/g, ' ').slice(0, 200);
-          return `- Requirement: "${req}" → Regex: "${rx}" (rejected by user)`;
-        })
-        .join("\n");
-      historyClause = `\n\nPrevious attempts that were rejected by the user (use these as negative examples to generate a better pattern):\n${examples}`;
+      for (const h of history) {
+        // Escape newlines to prevent prompt injection
+        const req = h.requirement.replace(/\n/g, ' ').slice(0, 200);
+        const rx = h.regex.replace(/\n/g, ' ').slice(0, 200);
+        const userContent = req
+          ? `Command: ${command.replace(/\n/g, ' ')}\nRequirement: ${req}`
+          : `Command: ${command.replace(/\n/g, ' ')}`;
+        messages.push({ role: "user", content: userContent });
+        messages.push({ role: "assistant", content: rx });
+      }
     }
+
+    // Add current request
+    const currentContent = requirement?.trim()
+      ? `Command: ${command.replace(/\n/g, ' ')}\nRequirement: ${requirement.trim().replace(/\n/g, ' ').slice(0, 200)}`
+      : `Command: ${command.replace(/\n/g, ' ')}`;
+    messages.push({ role: "user", content: currentContent });
 
     const result = await generateText({
       model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"),
-      prompt: `Convert this shell command to a regex pattern${requirementClause}.
-Command: ${command}${historyClause}
-Return only the regex pattern, no explanation.`,
+      messages,
       maxOutputTokens: 200,
     });
     return { regex: result.text.trim() };
