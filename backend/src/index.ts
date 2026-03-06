@@ -1,10 +1,81 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
+import { existsSync, readFileSync } from "fs";
+import pathModule from "path";
+import { fileURLToPath } from "url";
 import { generateText, createAgentUIStreamResponse, createIdGenerator } from "ai";
 import { createSession, connectSSH, sendInput, resizeTerminal, removeSession } from "./terminal";
-import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts, getAiModels, getAiModelById, createAiModel, updateAiModel, deleteAiModel } from "./db";
+import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts, getAiModels, getAiModelById, createAiModel, updateAiModel, deleteAiModel, seedModelsFromJson } from "./db";
 import { createTerminalAgent, getPendingUserInputs, resolveUserInput } from "./agent";
-import dashscope, { createModelClient } from "./dashscope-model";
+import dashscope, { createModelClient, getAllProviders, saveAllProviders, invalidateProviderCache, initProviderConfigIfMissing, ProviderConfig } from "./dashscope-model";
+import { frontendAssets } from "./frontend-assets";
+
+// ── Startup initialization ──────────────────────────────────────────────────
+function getBackendDir(): string {
+  try {
+    return pathModule.dirname(fileURLToPath(import.meta.url));
+  } catch {
+    return process.cwd();
+  }
+}
+
+const backendDir = getBackendDir();
+const backendRoot = pathModule.join(backendDir, '..');
+
+// Initialize model-provider.json from example if missing
+const exampleProviderPath = pathModule.join(backendRoot, 'model-provider.example.json');
+if (existsSync(exampleProviderPath)) {
+  initProviderConfigIfMissing(readFileSync(exampleProviderPath, 'utf-8'));
+}
+
+// Seed AI models from models.example.json if table is empty
+const exampleModelsPath = pathModule.join(backendRoot, 'models.example.json');
+if (existsSync(exampleModelsPath)) {
+  try {
+    seedModelsFromJson(readFileSync(exampleModelsPath, 'utf-8'));
+  } catch (e) {
+    console.warn('Failed to seed models:', e);
+  }
+}
+
+// ── Static frontend serving (production / exe mode) ─────────────────────────
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript',
+  '.mjs': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.txt': 'text/plain',
+};
+
+function getMimeType(filePath: string): string {
+  const ext = pathModule.extname(filePath).toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
+// Look for frontend dist folder relative to backend dir (dev & production layout)
+function findFrontendDistDir(): string | null {
+  const candidates = [
+    pathModule.join(backendRoot, '..', 'frontend', 'dist'),
+    pathModule.join(backendRoot, 'public'),
+    pathModule.join(process.cwd(), 'public'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(pathModule.join(c, 'index.html'))) return c;
+  }
+  return null;
+}
+
+const embeddedAssets = frontendAssets;
+const frontendDistDir = embeddedAssets ? null : findFrontendDistDir();
 
 // Map of sessionId -> set of WebSocket connections for terminal
 const terminalWsMap = new Map<string, Set<any>>();
@@ -16,6 +87,49 @@ const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
 const app = new Elysia()
   .use(cors())
   
+  // ── Provider management (model-provider.json) ──────────────────────────────
+  .get("/api/providers", () => getAllProviders())
+  .post("/api/providers", ({ body }) => {
+    const provider = body as ProviderConfig;
+    const providers = getAllProviders();
+    if (providers.find(p => p.name === provider.name)) {
+      return new Response(JSON.stringify({ error: 'Provider name already exists' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+    }
+    providers.push(provider);
+    saveAllProviders(providers);
+    return provider;
+  }, {
+    body: t.Object({
+      name: t.String(),
+      label: t.Optional(t.String()),
+      base_url: t.String(),
+      api_key: t.String(),
+    })
+  })
+  .put("/api/providers/:name", ({ params, body }) => {
+    const providers = getAllProviders();
+    const idx = providers.findIndex(p => p.name === params.name);
+    if (idx === -1) return new Response('Not found', { status: 404 });
+    providers[idx] = { ...providers[idx], ...(body as Partial<ProviderConfig>) };
+    saveAllProviders(providers);
+    invalidateProviderCache();
+    return providers[idx];
+  }, {
+    body: t.Object({
+      name: t.Optional(t.String()),
+      label: t.Optional(t.String()),
+      base_url: t.Optional(t.String()),
+      api_key: t.Optional(t.String()),
+    })
+  })
+  .delete("/api/providers/:name", ({ params }) => {
+    const providers = getAllProviders();
+    const filtered = providers.filter(p => p.name !== params.name);
+    saveAllProviders(filtered);
+    invalidateProviderCache();
+    return { success: true };
+  })
+
   // Server CRUD
   .get("/api/servers", () => getServers())
   .get("/api/servers/:id", ({ params }) => getServerById(Number(params.id)))
@@ -344,6 +458,46 @@ Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
         }
       }
     }
+  })
+
+  // Static frontend file serving (production / exe mode)
+  .get("/*", ({ request }) => {
+    const url = new URL(request.url);
+    let reqPath = url.pathname;
+
+    // Serve from embedded assets (built into exe)
+    if (embeddedAssets) {
+      const asset = embeddedAssets.get(reqPath) || embeddedAssets.get('/index.html');
+      if (asset) {
+        return new Response(asset.content, {
+          headers: { 'Content-Type': asset.mimeType, 'Cache-Control': 'no-cache' },
+        });
+      }
+      return new Response('Not Found', { status: 404 });
+    }
+
+    // Serve from frontend dist directory (filesystem)
+    if (frontendDistDir) {
+      // Remove leading slash, treat '' as index.html
+      let filePath = reqPath.startsWith('/') ? reqPath.slice(1) : reqPath;
+      if (!filePath) filePath = 'index.html';
+      const fullPath = pathModule.join(frontendDistDir, filePath);
+      if (existsSync(fullPath)) {
+        const content = readFileSync(fullPath);
+        return new Response(content, {
+          headers: { 'Content-Type': getMimeType(fullPath), 'Cache-Control': 'no-cache' },
+        });
+      }
+      // SPA fallback: return index.html for unknown paths
+      const indexPath = pathModule.join(frontendDistDir, 'index.html');
+      if (existsSync(indexPath)) {
+        return new Response(readFileSync(indexPath), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
+        });
+      }
+    }
+
+    return new Response('Not Found', { status: 404 });
   })
   
   .listen(3101);

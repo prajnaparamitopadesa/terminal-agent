@@ -588,11 +588,11 @@ function mapFinishReason(finishReason: string | null | undefined): LanguageModel
   }
 }
 
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import pathModule from 'path';
 import { fileURLToPath } from 'url';
 
-interface ProviderConfig {
+export interface ProviderConfig {
   name: string;
   label?: string;
   base_url: string;
@@ -601,15 +601,26 @@ interface ProviderConfig {
 
 let _providerConfigs: ProviderConfig[] | null = null;
 
-function loadProviderConfig(providerName: string): { api_key: string; base_url: string } {
+export function getProviderConfigPath(): string {
+  try {
+    return pathModule.join(
+      pathModule.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'model-provider.json'
+    );
+  } catch {
+    return pathModule.join(process.cwd(), 'model-provider.json');
+  }
+}
+
+export function invalidateProviderCache(): void {
+  _providerConfigs = null;
+}
+
+export function getAllProviders(): ProviderConfig[] {
   if (_providerConfigs === null) {
     try {
-      const configPath = pathModule.join(
-        pathModule.dirname(fileURLToPath(import.meta.url)),
-        '..',
-        'model-provider.json'
-      );
-      const raw = readFileSync(configPath, 'utf-8');
+      const raw = readFileSync(getProviderConfigPath(), 'utf-8');
       _providerConfigs = JSON.parse(raw).providers || [];
     } catch (e: any) {
       if (!String(e?.code).includes('ENOENT')) {
@@ -618,8 +629,26 @@ function loadProviderConfig(providerName: string): { api_key: string; base_url: 
       _providerConfigs = [];
     }
   }
+  return _providerConfigs!;
+}
 
-  const found = _providerConfigs!.find(p => p.name === providerName);
+export function saveAllProviders(providers: ProviderConfig[]): void {
+  writeFileSync(getProviderConfigPath(), JSON.stringify({ providers }, null, 2), 'utf-8');
+  _providerConfigs = providers;
+}
+
+export function initProviderConfigIfMissing(exampleContent: string): void {
+  const configPath = getProviderConfigPath();
+  if (!existsSync(configPath)) {
+    writeFileSync(configPath, exampleContent, 'utf-8');
+    console.log('Initialized model-provider.json from example.');
+    _providerConfigs = null;
+  }
+}
+
+function loadProviderConfig(providerName: string): { api_key: string; base_url: string } {
+  const providers = getAllProviders();
+  const found = providers.find(p => p.name === providerName);
   if (found) {
     return { api_key: found.api_key, base_url: found.base_url };
   }

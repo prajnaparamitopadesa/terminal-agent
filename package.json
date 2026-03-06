@@ -8,6 +8,7 @@
     "dev:client": "bun run --cwd frontend dev",
     "start": "bun run --parallel start:server start:client",
     "start:server": "bun run --cwd backend start",
-    "start:client": "bun run --cwd frontend build"
+    "start:client": "bun run --cwd frontend build",
+    "build:exe": "bun run scripts/build-exe.ts"
   }
 }
