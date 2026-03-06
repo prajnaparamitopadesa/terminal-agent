@@ -117,10 +117,10 @@ export default function ServerList() {
     if (tab === 'models') fetchModels()
   }, [tab])
 
-  // Sync default provider when providers load
+  // Sync default provider when providers load (only sets once when provider is empty)
   useEffect(() => {
-    if (providers.length > 0 && !modelForm.provider) {
-      setModelForm(f => ({ ...f, provider: providers[0].name }))
+    if (providers.length > 0) {
+      setModelForm(f => f.provider ? f : { ...f, provider: providers[0].name })
     }
   }, [providers])
 
@@ -470,7 +470,7 @@ export default function ServerList() {
                               {provider.name} · {provider.base_url}
                             </p>
                             <p className="text-xs text-gray-600 mt-0.5">
-                              API Key: {provider.api_key ? `${provider.api_key.slice(0, 6)}${'*'.repeat(Math.max(0, provider.api_key.length - 6))}` : '未设置'}
+                              API Key: {provider.api_key ? `sk-${'*'.repeat(6)}${provider.api_key.slice(-4)}` : '未设置'}
                             </p>
                           </div>
                         </div>

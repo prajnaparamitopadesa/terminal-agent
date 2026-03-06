@@ -284,7 +284,7 @@ export function deleteAiModel(id: number): void {
 }
 
 export function seedModelsFromJson(jsonContent: string): void {
-  const count = db.query("SELECT COUNT(*) as n FROM ai_models").get() as any;
+  const count = db.query("SELECT COUNT(*) as n FROM ai_models").get() as { n: number };
   if (count?.n > 0) return; // Only seed if empty
 
   const data = JSON.parse(jsonContent);

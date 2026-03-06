@@ -107,10 +107,17 @@ const app = new Elysia()
     })
   })
   .put("/api/providers/:name", ({ params, body }) => {
+    const b = body as { name?: string; label?: string; base_url?: string; api_key?: string };
     const providers = getAllProviders();
     const idx = providers.findIndex(p => p.name === params.name);
     if (idx === -1) return new Response('Not found', { status: 404 });
-    providers[idx] = { ...providers[idx], ...(body as Partial<ProviderConfig>) };
+    const updated: ProviderConfig = {
+      name: b.name ?? providers[idx].name,
+      label: b.label ?? providers[idx].label,
+      base_url: b.base_url ?? providers[idx].base_url,
+      api_key: b.api_key ?? providers[idx].api_key,
+    };
+    providers[idx] = updated;
     saveAllProviders(providers);
     invalidateProviderCache();
     return providers[idx];

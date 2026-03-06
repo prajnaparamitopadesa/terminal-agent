@@ -94,8 +94,8 @@ console.log('🔨 Compiling Windows exe (target: bun-windows-x64)...');
 console.log(`   Output: ${exePath}`);
 
 execSync(
-  `bun build --compile --target=bun-windows-x64 ${JSON.stringify(pathModule.join(backendDir, 'src', 'index.ts'))} --outfile ${JSON.stringify(exePath)}`,
-  { cwd: rootDir, stdio: 'inherit' }
+  `bun build --compile --target=bun-windows-x64 --outfile ${JSON.stringify(exePath)} ${JSON.stringify(pathModule.join(backendDir, 'src', 'index.ts'))}`,
+  { cwd: rootDir, stdio: 'inherit', shell: false }
 );
 
 console.log('');
