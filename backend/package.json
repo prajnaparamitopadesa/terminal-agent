@@ -5,7 +5,8 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
-    "mcp-sqlite": "bun run src/mcp-sqlite.ts"
+    "mcp-sqlite": "bun run src/mcp-sqlite.ts",
+    "seed-models": "bun run src/seed-models.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.39",

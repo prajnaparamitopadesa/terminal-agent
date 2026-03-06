@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
+import { MessageResponse } from './ai-elements/message'
 
 interface Props {
   message: UIMessage
@@ -29,27 +30,6 @@ function ansiToHtml(text: string): string {
   const converter = new AnsiUp()
   converter.use_classes = false
   return converter.ansi_to_html(text)
-}
-
-function extractCodeBlocks(content: string): Array<{ type: 'text' | 'code'; content: string; lang?: string }> {
-  const parts: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = []
-  const regex = /```(\w*)\n?([\s\S]*?)```/g
-  let lastIndex = 0
-  let match
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: content.slice(lastIndex, match.index) })
-    }
-    parts.push({ type: 'code', content: match[2].trim(), lang: match[1] || 'bash' })
-    lastIndex = match.index + match[0].length
-  }
-
-  if (lastIndex < content.length) {
-    parts.push({ type: 'text', content: content.slice(lastIndex) })
-  }
-
-  return parts
 }
 
 function CommandBlock({ command, sessionId, serverId, onAddSessionApproval }: {
@@ -257,27 +237,14 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, prelim
 export default function ChatMessage({ message, sessionId, serverId, onAddSessionApproval, onApproveToolCall, onUserInputSubmit }: Props) {
   const isUser = message.role === 'user'
 
-  const renderContent = (content: string) => {
-    const parts = extractCodeBlocks(content)
-    return parts.map((part, i) => {
-      if (part.type === 'code') {
-        return (
-          <CommandBlock
-            key={i}
-            command={part.content}
-            sessionId={sessionId}
-            serverId={serverId}
-            onAddSessionApproval={onAddSessionApproval}
-          />
-        )
-      }
-      return (
-        <p key={i} className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
-          {part.content}
-        </p>
-      )
-    })
-  }
+  const renderCodeBlock = (code: string, _lang: string) => (
+    <CommandBlock
+      command={code}
+      sessionId={sessionId}
+      serverId={serverId}
+      onAddSessionApproval={onAddSessionApproval}
+    />
+  )
 
   const renderToolPart = (part: ReturnType<typeof message.parts.filter>[number], key: string) => {
     if (!isToolOrDynamicToolUIPart(part)) return null
@@ -420,11 +387,11 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
 
   const flushTextGroup = (endIdx: number) => {
     if (textGroup.length === 0) return
-    const texts = textGroup
+    const combined = textGroup.join('')
     const key = `text-${groupStartIdx}`
     rendered.push(
       <div key={key} className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[95%]">
-        {texts.map((t, i) => <div key={i}>{renderContent(t)}</div>)}
+        <MessageResponse codeBlockRenderer={renderCodeBlock}>{combined}</MessageResponse>
       </div>
     )
     textGroup = []
