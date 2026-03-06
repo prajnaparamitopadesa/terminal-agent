@@ -136,6 +136,10 @@ export default function TerminalPanel({ server, sessionId }: Props) {
       hasAutoConnected.current = true
       connect('')
     }
+    return () => {
+      // Reset so a re-mount (e.g. React StrictMode or new server) can auto-connect
+      hasAutoConnected.current = false
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server?.id, server?.has_password])
 

@@ -169,16 +169,8 @@ export async function execCommand(sessionId: string, command: string): Promise<s
   // avoid all shell-escaping issues. base64 output only contains the characters
   // [A-Za-z0-9+/=] so the value is safe to embed unquoted. The inner bash
   // decodes and runs the original command.
-  //
-  // IMPORTANT: use a temp-file instead of a pipe so that the exec channel's
-  // stdin is inherited by the spawned bash process.  When the command is piped
-  // (`echo cmd | bash`) bash's stdin is the pipe and child processes (e.g.
-  // `sudo -S`) cannot read the password from the exec-channel stdin.  By
-  // writing the decoded script to a temp file and then running `bash <file>`,
-  // bash's stdin is the exec-channel stdin, which lets `sudo -S` (and similar
-  // interactive programs) read their input via sendExecInput().
   const b64 = Buffer.from(command).toString('base64');
-  const wrappedCommand = `/bin/bash -c 'script=$(mktemp /tmp/.exec_XXXXXX); echo "$1"|base64 -d>"$script"; /bin/bash "$script"; r=$?; rm -f "$script"; exit $r' -- ${b64}`;
+  const wrappedCommand = `/bin/bash -c 'echo "$1" | base64 -d | /bin/bash' -- ${b64}`;
 
   return new Promise((resolve, reject) => {
     // Do NOT use pty:true — PTY causes programs like systemctl to invoke a pager

@@ -24,7 +24,8 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 const DB_PATH = process.env.SQLITE_DB_PATH || "terminal-agent.db";
-const db = new Database(DB_PATH, { readonly: false });
+console.error(`${process.cwd()} - Starting SQLite MCP server with database: ${DB_PATH}`);
+const db = new Database(DB_PATH, { create: true });
 
 // ---------------------------------------------------------------------------
 // MCP server
@@ -36,10 +37,17 @@ const server = new McpServer({
 });
 
 // -- list_tables -------------------------------------------------------------
-server.tool(
+server.registerTool(
   "list_tables",
-  "List all tables in the SQLite database",
-  {},
+  {
+    description: "List all tables in the SQLite database",
+    inputSchema: {},
+    annotations: {
+      title: "List Tables",
+      readOnlyHint: true,
+      destructiveHint: false,
+    },
+  },
   async () => {
     const rows = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
@@ -59,10 +67,19 @@ server.tool(
 );
 
 // -- describe_table ----------------------------------------------------------
-server.tool(
+server.registerTool(
   "describe_table",
-  "Show the schema (columns) of a specific table",
-  { table: z.string().describe("Name of the table to describe") },
+  {
+    description: "Show the schema (columns) of a specific table",
+    inputSchema: {
+      table: z.string().describe("Name of the table to describe"),
+    },
+    annotations: {
+      title: "Describe Table",
+      readOnlyHint: true,
+      destructiveHint: false,
+    },
+  },
   async ({ table }) => {
     // Validate the table exists first to give a clear error
     const exists = db
@@ -122,15 +139,22 @@ server.tool(
 );
 
 // -- query -------------------------------------------------------------------
-server.tool(
+server.registerTool(
   "query",
-  "Execute a read-only SQL SELECT query and return the results as JSON",
   {
-    sql: z.string().describe("SQL SELECT statement to execute"),
-    params: z
-      .array(z.union([z.string(), z.number(), z.null()]))
-      .optional()
-      .describe("Optional positional parameters for the query"),
+    description: "Execute a read-only SQL SELECT query and return the results as JSON",
+    inputSchema: {
+      sql: z.string().describe("SQL SELECT statement to execute"),
+      params: z
+        .array(z.union([z.string(), z.number(), z.null()]))
+        .optional()
+        .describe("Optional positional parameters for the query"),
+    },
+    annotations: {
+      title: "SQL Query (read-only)",
+      readOnlyHint: true,
+      destructiveHint: false,
+    },
   },
   async ({ sql, params }) => {
     // Only allow SELECT statements for safety
@@ -168,15 +192,22 @@ server.tool(
 );
 
 // -- execute -----------------------------------------------------------------
-server.tool(
+server.registerTool(
   "execute",
-  "Execute a write SQL statement (INSERT, UPDATE, DELETE, etc.) and return the number of rows affected",
   {
-    sql: z.string().describe("SQL statement to execute"),
-    params: z
-      .array(z.union([z.string(), z.number(), z.null()]))
-      .optional()
-      .describe("Optional positional parameters for the statement"),
+    description: "Execute a write SQL statement (INSERT, UPDATE, DELETE, etc.) and return the number of rows affected",
+    inputSchema: {
+      sql: z.string().describe("SQL statement to execute"),
+      params: z
+        .array(z.union([z.string(), z.number(), z.null()]))
+        .optional()
+        .describe("Optional positional parameters for the statement"),
+    },
+    annotations: {
+      title: "SQL Execute (write)",
+      readOnlyHint: false,
+      destructiveHint: true,
+    },
   },
   async ({ sql, params }) => {
     // Block SELECT - use the query tool for reads
