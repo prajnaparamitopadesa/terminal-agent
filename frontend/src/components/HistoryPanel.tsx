@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, Plus, MessageSquare, Loader2, Globe, Server } from 'lucide-react'
+import { Search, Plus, MessageSquare, Loader2, Globe, Server, Trash2 } from 'lucide-react'
 import { Conversation } from '../types'
 
 interface Props {
@@ -30,6 +30,7 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
   const [hasMore, setHasMore] = useState(true)
   const [initialLoading, setInitialLoading] = useState(true)
   const [showAll, setShowAll] = useState(() => localStorage.getItem('history_show_all') === 'true')
+  const [clearConfirm, setClearConfirm] = useState<'server' | 'all' | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef(0)
   const loadingRef = useRef(false)
@@ -97,6 +98,23 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
     return conv.title || ''
   }
 
+  const handleClearHistory = async (scope: 'server' | 'all') => {
+    const params = new URLSearchParams()
+    if (scope === 'server') params.set('server_id', String(serverId))
+    try {
+      const res = await fetch(`/api/conversations?${params}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    } catch (err) {
+      console.error('Failed to clear history:', err)
+    }
+    setClearConfirm(null)
+    // Refresh list
+    offsetRef.current = 0
+    setHasMore(true)
+    setInitialLoading(true)
+    fetchConversations(true, search, showAll)
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Search + toggle */}
@@ -110,14 +128,51 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
             className="w-full bg-gray-800 border border-gray-600 rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
           />
         </div>
-        <button
-          onClick={() => setShowAll(v => !v)}
-          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-md transition-colors ${showAll ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
-          title={showAll ? '当前显示所有服务器的历史记录' : '当前只显示本服务器的历史记录'}
-        >
-          {showAll ? <Globe className="w-3.5 h-3.5" /> : <Server className="w-3.5 h-3.5" />}
-          {showAll ? '所有服务器' : '当前服务器'}
-        </button>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setShowAll(v => !v)}
+            className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-md transition-colors ${showAll ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
+            title={showAll ? '当前显示所有服务器的历史记录' : '当前只显示本服务器的历史记录'}
+          >
+            {showAll ? <Globe className="w-3.5 h-3.5" /> : <Server className="w-3.5 h-3.5" />}
+            {showAll ? '所有服务器' : '当前服务器'}
+          </button>
+          <div className="relative">
+            <button
+              onClick={() => setClearConfirm(c => c ? null : 'server')}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-md text-gray-500 hover:text-red-400 hover:bg-gray-800 transition-colors"
+              title="清空历史记录"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              清空
+            </button>
+            {clearConfirm && (
+              <div className="absolute right-0 top-7 z-10 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 w-52">
+                <p className="text-xs text-gray-300 mb-2 font-medium">确认清空历史记录？</p>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={() => handleClearHistory('server')}
+                    className="text-xs px-2 py-1.5 rounded-md bg-red-900/40 text-red-300 hover:bg-red-900/70 transition-colors text-left"
+                  >
+                    清空当前服务器记录
+                  </button>
+                  <button
+                    onClick={() => handleClearHistory('all')}
+                    className="text-xs px-2 py-1.5 rounded-md bg-red-900/40 text-red-300 hover:bg-red-900/70 transition-colors text-left"
+                  >
+                    清空所有服务器记录
+                  </button>
+                  <button
+                    onClick={() => setClearConfirm(null)}
+                    className="text-xs px-2 py-1.5 rounded-md text-gray-400 hover:bg-gray-700 transition-colors text-left"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* List */}

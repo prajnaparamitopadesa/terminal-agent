@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Server, AiModel, ModelProvider } from '../types'
-import { Monitor, Plus, Trash2, Terminal, Server as ServerIcon, BrainCircuit, Pencil, Check, X, Building2, HelpCircle } from 'lucide-react'
+import { Monitor, Plus, Trash2, Terminal, Server as ServerIcon, BrainCircuit, Pencil, Check, X, Building2, HelpCircle, AlertTriangle } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Select } from '../components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog'
 import { useNavigate } from 'react-router-dom'
 
 type Tab = 'servers' | 'models' | 'providers'
@@ -11,9 +12,20 @@ type Tab = 'servers' | 'models' | 'providers'
 const emptyModelForm = { model_name: '', display_name: '', provider: '', enabled: 'Y' as 'Y' | 'N' }
 const emptyProviderForm = { name: '', label: '', base_url: '', api_key: '' }
 
+interface ConfirmState {
+  type: 'server' | 'model' | 'provider'
+  id?: number
+  name?: string
+  /** For provider deletion: list of model IDs that belong to this provider */
+  affectedModels?: AiModel[]
+}
+
 export default function ServerList() {
   const [tab, setTab] = useState<Tab>('servers')
   const navigate = useNavigate()
+
+  // ── Confirmation dialog ───────────────────────────────────────────────────
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
 
   // ── Servers ──────────────────────────────────────────────────────────────
   const [servers, setServers] = useState<Server[]>([])
@@ -75,6 +87,8 @@ export default function ServerList() {
   const handleDeleteProvider = async (name: string) => {
     await fetch(`/api/providers/${encodeURIComponent(name)}`, { method: 'DELETE' }).catch(console.error)
     setProviders(prev => prev.filter(p => p.name !== name))
+    // Also remove associated models from the local list
+    setModels(prev => prev.filter(m => m.provider !== name))
   }
 
   const startEditProvider = (provider: ModelProvider) => {
@@ -114,7 +128,7 @@ export default function ServerList() {
   }
 
   useEffect(() => {
-    if (tab === 'models') fetchModels()
+    if (tab === 'models' || tab === 'providers') fetchModels()
   }, [tab])
 
   // Sync default provider when providers load (only sets once when provider is empty)
@@ -181,7 +195,58 @@ export default function ServerList() {
     cancelEdit()
   }
 
+  // ── Confirm dialog actions ────────────────────────────────────────────────
+  const handleConfirmDelete = async () => {
+    if (!confirmState) return
+    if (confirmState.type === 'server' && confirmState.id !== undefined) {
+      await handleDelete(confirmState.id)
+    } else if (confirmState.type === 'model' && confirmState.id !== undefined) {
+      await fetch(`/api/ai-models/${confirmState.id}`, { method: 'DELETE' }).catch(console.error)
+      setModels(prev => prev.filter(m => m.id !== confirmState.id))
+    } else if (confirmState.type === 'provider' && confirmState.name) {
+      // Delete all associated models first
+      for (const m of confirmState.affectedModels || []) {
+        await fetch(`/api/ai-models/${m.id}`, { method: 'DELETE' }).catch(console.error)
+      }
+      await handleDeleteProvider(confirmState.name)
+    }
+    setConfirmState(null)
+  }
+
   return (
+    <>
+    {/* ── Confirm Dialog ── */}
+    <Dialog open={!!confirmState} onOpenChange={open => { if (!open) setConfirmState(null) }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            确认删除
+          </DialogTitle>
+          <DialogDescription>
+            {confirmState?.type === 'server' && '此操作将永久删除该服务器配置，无法恢复。'}
+            {confirmState?.type === 'model' && '此操作将永久删除该模型，无法恢复。'}
+            {confirmState?.type === 'provider' && (
+              confirmState.affectedModels && confirmState.affectedModels.length > 0
+                ? `删除服务商「${confirmState.name}」将同时删除其下 ${confirmState.affectedModels.length} 个模型，操作无法恢复。`
+                : `此操作将永久删除服务商「${confirmState.name}」，无法恢复。`
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        {confirmState?.type === 'provider' && confirmState.affectedModels && confirmState.affectedModels.length > 0 && (
+          <div className="bg-red-950/30 border border-red-800/50 rounded-lg p-3 text-xs text-red-300 space-y-1 max-h-32 overflow-y-auto">
+            {confirmState.affectedModels.map(m => (
+              <div key={m.id}>{m.display_name || m.model_name}</div>
+            ))}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setConfirmState(null)}>取消</Button>
+          <Button variant="destructive" onClick={handleConfirmDelete}>确认删除</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
@@ -329,7 +394,7 @@ export default function ServerList() {
                         连接
                       </Button>
                       <Button
-                        onClick={() => handleDelete(server.id)}
+                        onClick={() => setConfirmState({ type: 'server', id: server.id, name: server.name || server.host })}
                         variant="ghost"
                         size="icon"
                         className="text-gray-500 hover:text-red-400 hover:bg-gray-800"
@@ -486,7 +551,10 @@ export default function ServerList() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDeleteProvider(provider.name)}
+                            onClick={() => {
+                              const affectedModels = models.filter(m => m.provider === provider.name)
+                              setConfirmState({ type: 'provider', name: provider.name, affectedModels })
+                            }}
                             className="text-gray-500 hover:text-red-400 hover:bg-gray-800"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -671,7 +739,7 @@ export default function ServerList() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDeleteModel(model.id)}
+                            onClick={() => setConfirmState({ type: 'model', id: model.id, name: model.display_name || model.model_name })}
                             className="text-gray-500 hover:text-red-400 hover:bg-gray-800"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -687,5 +755,6 @@ export default function ServerList() {
         )}
       </div>
     </div>
+    </>
   )
 }
