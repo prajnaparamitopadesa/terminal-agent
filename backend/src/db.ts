@@ -294,11 +294,11 @@ export function deleteAiModel(id: number): void {
   db.run("DELETE FROM ai_models WHERE id = ?", [id]);
 }
 
-export function seedModelsFromJson(jsonContent: string): void {
+export function seedModelsFromJson(jsonContentOrData: string | object): void {
   const count = db.query("SELECT COUNT(*) as n FROM ai_models").get() as { n: number };
   if (count?.n > 0) return; // Only seed if empty
 
-  const data = JSON.parse(jsonContent);
+  const data = typeof jsonContentOrData === 'string' ? JSON.parse(jsonContentOrData) : jsonContentOrData;
   const providers: Array<{ name: string; label?: string; models?: any[] }> = data.providers || [];
   for (const provider of providers) {
     for (const model of provider.models || []) {
@@ -350,11 +350,11 @@ export function deleteProvider(name: string): void {
   db.run("DELETE FROM providers WHERE name = ?", [name]);
 }
 
-export function seedProvidersFromJson(jsonContent: string): void {
+export function seedProvidersFromJson(jsonContentOrData: string | object): void {
   const count = db.query("SELECT COUNT(*) as n FROM providers").get() as { n: number };
   if (count?.n > 0) return; // Only seed if empty
 
-  const data = JSON.parse(jsonContent);
+  const data = typeof jsonContentOrData === 'string' ? JSON.parse(jsonContentOrData) : jsonContentOrData;
   for (const provider of data.providers || []) {
     createProvider({
       name: provider.name,
