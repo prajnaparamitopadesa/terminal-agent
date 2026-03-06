@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
-import { ArrowLeft, Terminal as TerminalIcon, MessageSquare, Shield, Plus, GitFork, History, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Terminal as TerminalIcon, MessageSquare, Shield, Plus, GitFork, History, ChevronDown, Send, Square } from 'lucide-react'
 import TerminalPanel from '../components/TerminalPanel'
 import ChatMessage from '../components/ChatMessage'
 import AutoApprovalManager from '../components/AutoApprovalManager'
@@ -37,6 +37,19 @@ export default function Connection() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const agentWsRef = useRef<WebSocket | null>(null)
+  // Keep a ref to the latest selectedModelId so the transport always sends the current value
+  const selectedModelIdRef = useRef<number | null>(null)
+  selectedModelIdRef.current = selectedModelId
+
+  // Stable transport: only recreated when sessionId/serverId changes.
+  // body is a Resolvable function called at request time so the latest modelId is always sent.
+  const chatTransport = useMemo(() => new DefaultChatTransport({
+    api: `/api/agent/${sessionId}/chat`,
+    body: () => ({
+      serverId: Number(serverId),
+      modelId: selectedModelIdRef.current ?? undefined,
+    }),
+  }), [sessionId, serverId])
 
   // Fetch server if not provided via navigation state (e.g. opened in new window)
   useEffect(() => {
@@ -82,11 +95,8 @@ export default function Connection() {
     return () => ws.close()
   }, [sessionId])
   
-  const { messages, sendMessage, status, setMessages, addToolApprovalResponse } = useChat({
-    transport: new DefaultChatTransport({
-      api: `/api/agent/${sessionId}/chat`,
-      body: { serverId: Number(serverId), modelId: selectedModelId || undefined },
-    }),
+  const { messages, sendMessage, status, stop, setMessages, addToolApprovalResponse } = useChat({
+    transport: chatTransport,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     onFinish: () => {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -457,7 +467,30 @@ export default function Connection() {
                 disabled={isLoading}
                 placeholder="向 AI 助手发送消息..."
                 onKeyDown={handleInputKeyDown}
-              />
+              >
+                {isLoading ? (
+                  <Button
+                    type="button"
+                    size="iconSm"
+                    variant="destructive"
+                    className="flex-shrink-0 mb-0.5"
+                    onClick={stop}
+                    title="停止"
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    disabled={!input.trim()}
+                    size="iconSm"
+                    className="flex-shrink-0 mb-0.5"
+                    onClick={handleChatSubmit}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </PromptInput>
             </div>
             </>
             )}
