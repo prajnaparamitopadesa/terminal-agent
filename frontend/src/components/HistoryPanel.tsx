@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, Plus, MessageSquare, Loader2 } from 'lucide-react'
+import { Search, Plus, MessageSquare, Loader2, Globe, Server } from 'lucide-react'
 import { Conversation } from '../types'
 
 interface Props {
@@ -29,12 +29,18 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [showAll, setShowAll] = useState(() => localStorage.getItem('history_show_all') === 'true')
   const scrollRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef(0)
   const loadingRef = useRef(false)
   const PAGE_SIZE = 20
 
-  const fetchConversations = useCallback(async (reset = false, searchOverride?: string) => {
+  // Persist showAll toggle
+  useEffect(() => {
+    localStorage.setItem('history_show_all', String(showAll))
+  }, [showAll])
+
+  const fetchConversations = useCallback(async (reset = false, searchOverride?: string, showAllOverride?: boolean) => {
     if (loadingRef.current) return
     const offset = reset ? 0 : offsetRef.current
     loadingRef.current = true
@@ -46,6 +52,8 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
       })
       const searchVal = searchOverride !== undefined ? searchOverride : search
       if (searchVal.trim()) params.set('search', searchVal.trim())
+      const filterAll = showAllOverride !== undefined ? showAllOverride : showAll
+      if (!filterAll) params.set('server_id', String(serverId))
 
       const res = await fetch(`/api/conversations?${params}`)
       const data: Conversation[] = await res.json()
@@ -67,13 +75,13 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
     }
   }, [search])
 
-  // Reset and fetch when search changes
+  // Reset and fetch when search or showAll changes
   useEffect(() => {
     offsetRef.current = 0
     setHasMore(true)
     setInitialLoading(true)
-    fetchConversations(true, search)
-  }, [search])
+    fetchConversations(true, search, showAll)
+  }, [search, showAll])
 
   // Infinite scroll
   const handleScroll = useCallback(() => {
@@ -91,8 +99,8 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search */}
-      <div className="p-3 border-b border-gray-700">
+      {/* Search + toggle */}
+      <div className="p-3 border-b border-gray-700 space-y-2">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
@@ -102,6 +110,14 @@ export default function HistoryPanel({ serverId, onSelectConversation, onUseProm
             className="w-full bg-gray-800 border border-gray-600 rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
           />
         </div>
+        <button
+          onClick={() => setShowAll(v => !v)}
+          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-md transition-colors ${showAll ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
+          title={showAll ? '当前显示所有服务器的历史记录' : '当前只显示本服务器的历史记录'}
+        >
+          {showAll ? <Globe className="w-3.5 h-3.5" /> : <Server className="w-3.5 h-3.5" />}
+          {showAll ? '所有服务器' : '当前服务器'}
+        </button>
       </div>
 
       {/* List */}

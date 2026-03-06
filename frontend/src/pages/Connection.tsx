@@ -366,7 +366,7 @@ export default function Connection() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-gray-400 hover:text-gray-200 gap-1">
-                      {aiModels.find(m => m.id === selectedModelId)?.model_name || '选择模型'}
+                      {aiModels.find(m => m.id === selectedModelId)?.display_name || aiModels.find(m => m.id === selectedModelId)?.model_name || '选择模型'}
                       <ChevronDown className="w-3 h-3" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -378,7 +378,7 @@ export default function Connection() {
                         className={selectedModelId === model.id ? 'text-blue-400' : ''}
                       >
                         <div>
-                          <div className="text-xs font-medium">{model.model_name}</div>
+                          <div className="text-xs font-medium">{model.display_name || model.model_name}</div>
                           <div className="text-xs text-gray-500">{model.provider}</div>
                         </div>
                       </DropdownMenuItem>

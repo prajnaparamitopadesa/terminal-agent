@@ -51,11 +51,21 @@ db.run(`
   CREATE TABLE IF NOT EXISTS ai_models (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     model_name VARCHAR NOT NULL,
+    display_name VARCHAR,
     provider VARCHAR NOT NULL,
     capabilities TEXT NOT NULL DEFAULT '{}',
     enabled VARCHAR(1) NOT NULL DEFAULT 'Y'
   )
 `);
+
+// Migration: add display_name column if not exists
+try {
+  db.run(`ALTER TABLE ai_models ADD COLUMN display_name VARCHAR`);
+} catch (e: any) {
+  if (!String(e?.message || e).includes('duplicate column')) {
+    console.error('Migration error:', e);
+  }
+}
 
 export { db };
 
@@ -219,6 +229,7 @@ export interface AiModelCapabilities {
 export interface AiModel {
   id: number;
   model_name: string;
+  display_name: string;
   provider: string;
   capabilities: AiModelCapabilities;
   enabled: 'Y' | 'N';
@@ -248,22 +259,24 @@ export function getAiModelByName(modelName: string): AiModel | null {
   return row ? parseAiModel(row) : null;
 }
 
-export function createAiModel(data: { model_name: string; provider: string; capabilities?: AiModelCapabilities; enabled?: 'Y' | 'N' }): AiModel {
+export function createAiModel(data: { model_name: string; display_name?: string; provider: string; capabilities?: AiModelCapabilities; enabled?: 'Y' | 'N' }): AiModel {
+  const display_name = data.display_name ?? data.model_name;
   const capabilities = JSON.stringify(data.capabilities || {});
   const enabled = data.enabled ?? 'Y';
-  const stmt = db.prepare("INSERT INTO ai_models (model_name, provider, capabilities, enabled) VALUES (?, ?, ?, ?)");
-  const result = stmt.run(data.model_name, data.provider, capabilities, enabled);
-  return { id: Number(result.lastInsertRowid), model_name: data.model_name, provider: data.provider, capabilities: data.capabilities || {}, enabled };
+  const stmt = db.prepare("INSERT INTO ai_models (model_name, display_name, provider, capabilities, enabled) VALUES (?, ?, ?, ?, ?)");
+  const result = stmt.run(data.model_name, display_name, data.provider, capabilities, enabled);
+  return { id: Number(result.lastInsertRowid), model_name: data.model_name, display_name, provider: data.provider, capabilities: data.capabilities || {}, enabled };
 }
 
-export function updateAiModel(id: number, data: { model_name?: string; provider?: string; capabilities?: AiModelCapabilities; enabled?: 'Y' | 'N' }): void {
+export function updateAiModel(id: number, data: { model_name?: string; display_name?: string; provider?: string; capabilities?: AiModelCapabilities; enabled?: 'Y' | 'N' }): void {
   const current = getAiModelById(id);
   if (!current) return;
   const model_name = data.model_name ?? current.model_name;
+  const display_name = data.display_name ?? current.display_name;
   const provider = data.provider ?? current.provider;
   const capabilities = JSON.stringify(data.capabilities ?? current.capabilities);
   const enabled = data.enabled ?? current.enabled;
-  db.run("UPDATE ai_models SET model_name = ?, provider = ?, capabilities = ?, enabled = ? WHERE id = ?", [model_name, provider, capabilities, enabled, id]);
+  db.run("UPDATE ai_models SET model_name = ?, display_name = ?, provider = ?, capabilities = ?, enabled = ? WHERE id = ?", [model_name, display_name, provider, capabilities, enabled, id]);
 }
 
 export function deleteAiModel(id: number): void {

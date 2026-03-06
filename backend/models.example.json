@@ -1,118 +1,84 @@
 {
   "providers": [
     {
-      "name": "dashscope",
-      "label": "阿里云 DashScope",
-      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key_env": "DASHSCOPE_API_KEY",
+      "name": "阿里云",
+      "label": "阿里云",
       "models": [
         {
-          "model_name": "qwen-plus",
+          "display_name": "qwen3-max-2026-01-23",
+          "model_name": "qwen3-max-2026-01-23",
           "capabilities": {
-            "multimodal": false,
-            "deep_thinking": false,
             "tool_calling": true,
-            "function_calling": true
+            "deep_thinking": true
           },
           "enabled": "Y"
         },
         {
-          "model_name": "qwen-turbo",
+          "display_name": "qwen3.5-plus",
+          "model_name": "qwen3.5-plus",
           "capabilities": {
-            "multimodal": false,
-            "deep_thinking": false,
             "tool_calling": true,
-            "function_calling": true
-          },
-          "enabled": "Y"
-        },
-        {
-          "model_name": "qwen-max",
-          "capabilities": {
-            "multimodal": false,
-            "deep_thinking": false,
-            "tool_calling": true,
-            "function_calling": true
-          },
-          "enabled": "Y"
-        },
-        {
-          "model_name": "qwen-long",
-          "capabilities": {
-            "multimodal": false,
-            "deep_thinking": false,
-            "tool_calling": true,
-            "function_calling": true
-          },
-          "enabled": "Y"
-        },
-        {
-          "model_name": "qwq-plus",
-          "capabilities": {
-            "multimodal": false,
             "deep_thinking": true,
-            "tool_calling": true,
-            "function_calling": true
+            "multimodal": true
           },
           "enabled": "Y"
         },
         {
-          "model_name": "qwen-vl-plus",
+          "display_name": "qwen3.5-flash",
+          "model_name": "qwen3.5-flash",
           "capabilities": {
-            "multimodal": true,
-            "deep_thinking": false,
             "tool_calling": true,
-            "function_calling": true
+            "deep_thinking": true,
+            "multimodal": true
           },
-          "enabled": "N"
+          "enabled": "Y"
+        },
+        {
+          "display_name": "glm-5",
+          "model_name": "glm-5",
+          "capabilities": {
+            "tool_calling": true
+          },
+          "enabled": "Y"
+        },
+        {
+          "display_name": "qwen3-max",
+          "model_name": "qwen3-max",
+          "capabilities": {
+            "tool_calling": true,
+            "deep_thinking": true
+          },
+          "enabled": "Y"
+        },
+        {
+          "display_name": "kimi-k2.5",
+          "model_name": "kimi-k2.5",
+          "capabilities": {
+            "tool_calling": true
+          },
+          "enabled": "Y"
         }
       ]
     },
     {
-      "name": "openai",
-      "label": "OpenAI",
-      "base_url": "https://api.openai.com/v1",
-      "api_key_env": "OPENAI_API_KEY",
+      "name": "modelscope",
+      "label": "ModelScope",
       "models": [
         {
-          "model_name": "gpt-4o",
+          "display_name": "modelscope/MiniMax-M2.5",
+          "model_name": "MiniMax/MiniMax-M2.5",
           "capabilities": {
-            "multimodal": true,
-            "deep_thinking": false,
-            "tool_calling": true,
-            "function_calling": true
+            "tool_calling": true
           },
-          "enabled": "N"
+          "enabled": "Y"
         },
         {
-          "model_name": "gpt-4o-mini",
+          "display_name": "modelscope/Step-3.5-Flash",
+          "model_name": "stepfun-ai/Step-3.5-Flash",
           "capabilities": {
-            "multimodal": true,
-            "deep_thinking": false,
-            "tool_calling": true,
-            "function_calling": true
+            "tool_calling": true
           },
-          "enabled": "N"
-        },
-        {
-          "model_name": "o1",
-          "capabilities": {
-            "multimodal": false,
-            "deep_thinking": true,
-            "tool_calling": false,
-            "function_calling": false
-          },
-          "enabled": "N"
-        },
-        {
-          "model_name": "o3-mini",
-          "capabilities": {
-            "multimodal": false,
-            "deep_thinking": true,
-            "tool_calling": true,
-            "function_calling": true
-          },
-          "enabled": "N"
+          "enabled": "Y"
         }
       ]
     }

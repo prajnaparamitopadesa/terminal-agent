@@ -39,6 +39,7 @@ export interface AiModelCapabilities {
 export interface AiModel {
   id: number
   model_name: string
+  display_name: string
   provider: string
   capabilities: AiModelCapabilities
   enabled: 'Y' | 'N'
