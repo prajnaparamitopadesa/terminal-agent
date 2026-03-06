@@ -13,6 +13,25 @@ import type { LanguageModel } from "ai";
 
 const DEBUG_AGENT = process.env.DEBUG_AGENT === '1';
 
+/** Remove ANSI escape sequences so plain text can be sent to the AI model */
+const ansiEscapePattern = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g;
+function stripAnsi(str: string): string {
+  return str.replace(ansiEscapePattern, '');
+}
+
+/**
+ * Returns a toModelOutput callback that strips ANSI codes from the `output`
+ * field so colorized terminal output does not interfere with the AI model.
+ * The raw ANSI output is still sent to the frontend for colorized rendering.
+ */
+function toModelOutputStrippedAnsi(output: unknown): { type: 'json'; value: any } {
+  const result = output as Record<string, any>;
+  return {
+    type: 'json',
+    value: { ...result, output: stripAnsi(String(result.output ?? '')) },
+  };
+}
+
 function agentDebug(...args: unknown[]) {
   if (DEBUG_AGENT) console.log('[DEBUG_AGENT agent]', ...args);
 }
@@ -52,9 +71,9 @@ async function collectExecOutput(
     handleInput?: boolean;
     promptTimeout?: number;
     promptRegex?: string;
-    onChunk?: (totalOutput: string) => void;
+    onChunk?: (totalRawOutput: string) => void;
   }
-): Promise<{ output: string; closed: boolean; exitCode: number | null; streamId?: string }> {
+): Promise<{ rawOutput: string; closed: boolean; exitCode: number | null; streamId?: string }> {
   const { timeout, handleInput = false, promptTimeout = 3000, promptRegex, onChunk } = options;
   const startTime = Date.now();
   let lastDataTime = Date.now();
@@ -85,13 +104,13 @@ async function collectExecOutput(
 
     if (chunk !== null) {
       lastDataTime = Date.now();
-      onChunk?.(info.output);
+      onChunk?.(info.rawOutput);
       agentDebug(`collectExecOutput chunk received: streamId=${streamId} chunkLen=${chunk.length} closed=${info.closed}`);
 
       // Check prompt regex on new data
       if (handleInput && compiledPromptRegex) {
-        if (compiledPromptRegex.test(info.output.slice(-500))) {
-          return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
+        if (compiledPromptRegex.test(info.rawOutput.slice(-500))) {
+          return { rawOutput: info.rawOutput, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
         }
       }
     } else {
@@ -106,21 +125,21 @@ async function collectExecOutput(
       if (handleInput && idleTime >= promptTimeout) {
         // Check prompt regex one more time
         if (compiledPromptRegex) {
-          if (compiledPromptRegex.test(info.output.slice(-500))) {
-            return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
+          if (compiledPromptRegex.test(info.rawOutput.slice(-500))) {
+            return { rawOutput: info.rawOutput, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
           }
         }
         agentDebug(`collectExecOutput idle timeout: streamId=${streamId} idleTime=${idleTime}`);
         // Return on idle timeout regardless
-        return { output: info.output, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
+        return { rawOutput: info.rawOutput, closed: info.closed, exitCode: info.exitCode, streamId: info.closed ? undefined : streamId };
       }
     }
   }
 
   const finalInfo = getExecStreamInfo(streamId);
-  if (!finalInfo) return { output: '', closed: true, exitCode: null };
+  if (!finalInfo) return { rawOutput: '', closed: true, exitCode: null };
   return {
-    output: finalInfo.output,
+    rawOutput: finalInfo.rawOutput,
     closed: finalInfo.closed,
     exitCode: finalInfo.exitCode,
     streamId: finalInfo.closed ? undefined : streamId,
@@ -153,6 +172,7 @@ function createTools(ctx: AgentContext) {
       needsApproval: (input: { command: string }) => {
         return !checkAutoApproval(input.command, ctx.serverId);
       },
+      toModelOutput: ({ output }) => toModelOutputStrippedAnsi(output),
       async *execute({ command, timeout = 30000, handleInput = false, promptTimeout = 3000, promptRegex }) {
         yield { output: '', closed: false, exitCode: null as number | null, streamId: undefined as string | undefined, command };
 
@@ -175,13 +195,13 @@ function createTools(ctx: AgentContext) {
             handleInput,
             promptTimeout,
             promptRegex,
-            onChunk: (totalOutput) => {
+            onChunk: (_totalRawOutput) => {
               // Note: Can't yield from callback; streaming is handled by polling in collectExecOutput
             },
           });
 
           yield {
-            output: result.output,
+            output: result.rawOutput,
             closed: result.closed,
             exitCode: result.exitCode,
             streamId: result.streamId,
@@ -205,6 +225,7 @@ function createTools(ctx: AgentContext) {
         waitTimeout: z.number().optional().describe("发送后等待输出的超时时间（毫秒），默认 5000"),
         promptRegex: z.string().optional().describe("检测下一个输入提示的正则表达式"),
       }),
+      toModelOutput: ({ output }) => toModelOutputStrippedAnsi(output),
       async *execute({ streamId, input, pressEnter = true, waitTimeout = 5000, promptRegex }) {
         yield { output: '', closed: false, exitCode: null as number | null, streamId, sent: false };
 
@@ -222,7 +243,7 @@ function createTools(ctx: AgentContext) {
         });
 
         yield {
-          output: result.output,
+          output: result.rawOutput,
           closed: result.closed,
           exitCode: result.exitCode,
           streamId: result.streamId,
@@ -238,6 +259,7 @@ function createTools(ctx: AgentContext) {
         timeout: z.number().optional().describe("等待超时时间（毫秒），默认 15000"),
         promptRegex: z.string().optional().describe("检测输入提示的正则表达式"),
       }),
+      toModelOutput: ({ output }) => toModelOutputStrippedAnsi(output),
       async *execute({ streamId, timeout = 15000, promptRegex }) {
         yield { output: '', closed: false, exitCode: null as number | null, streamId };
 
@@ -249,7 +271,7 @@ function createTools(ctx: AgentContext) {
         });
 
         yield {
-          output: result.output,
+          output: result.rawOutput,
           closed: result.closed,
           exitCode: result.exitCode,
           streamId: result.streamId,
@@ -264,6 +286,7 @@ function createTools(ctx: AgentContext) {
         waitTimeout: z.number().optional().describe("发送后等待输出的超时时间（毫秒），默认 5000"),
         promptRegex: z.string().optional().describe("检测下一个输入提示的正则表达式"),
       }),
+      toModelOutput: ({ output }) => toModelOutputStrippedAnsi(output),
       async *execute({ streamId, waitTimeout = 5000, promptRegex }) {
         yield { output: '', closed: false, exitCode: null as number | null, streamId, sent: false };
 
@@ -287,7 +310,7 @@ function createTools(ctx: AgentContext) {
         });
 
         yield {
-          output: result.output,
+          output: result.rawOutput,
           closed: result.closed,
           exitCode: result.exitCode,
           streamId: result.streamId,
@@ -307,6 +330,7 @@ function createTools(ctx: AgentContext) {
         waitTimeout: z.number().optional().describe("发送后等待输出的超时时间（毫秒），默认 10000"),
         promptRegex: z.string().optional().describe("检测下一个输入提示的正则表达式"),
       }),
+      toModelOutput: ({ output }) => toModelOutputStrippedAnsi(output),
       async *execute({ streamId, prompt, isPassword = false, waitTimeout = 10000, promptRegex }) {
         yield { status: "waiting-for-user-input" as const, prompt, isPassword, streamId };
 
@@ -335,7 +359,7 @@ function createTools(ctx: AgentContext) {
           prompt,
           isPassword,
           streamId: result.streamId,
-          output: result.output,
+          output: result.rawOutput,
           closed: result.closed,
           exitCode: result.exitCode,
           sent: true,
