@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
+import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
 import { ArrowLeft, Send, Terminal as TerminalIcon, MessageSquare, Shield, Plus, GitFork, History } from 'lucide-react'
 import TerminalPanel from '../components/TerminalPanel'
 import ChatMessage from '../components/ChatMessage'
@@ -68,6 +68,7 @@ export default function Connection() {
       api: `/api/agent/${sessionId}/chat`,
       body: { serverId: Number(serverId) },
     }),
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     onFinish: () => {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     },

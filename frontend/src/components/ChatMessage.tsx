@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import type React from 'react'
 import { Copy, ChevronDown, ChevronUp, Settings, Terminal, Check } from 'lucide-react'
 import { UIMessage, isTextUIPart, isToolOrDynamicToolUIPart } from 'ai'
 import { AnsiUp } from 'ansi_up'
@@ -141,13 +142,14 @@ function AnsiOutput({ text }: { text: string }) {
   )
 }
 
-function ExecResult({ command, output, state, exitCode, closed, streamId, sessionId, serverId, onAddSessionApproval }: {
+function ExecResult({ command, output, state, exitCode, closed, streamId, preliminary, sessionId, serverId, onAddSessionApproval }: {
   command: string
   output?: string
   state: string
   exitCode?: number | null
   closed?: boolean
   streamId?: string
+  preliminary?: boolean
   sessionId: string
   serverId: number
   onAddSessionApproval: (command: string) => void
@@ -178,7 +180,8 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
     })
   }
 
-  const hasOutput = state === 'output-available' && output
+  const isExecuting = state !== 'output-available' || preliminary === true
+  const hasOutput = !isExecuting && output
 
   return (
     <div className="bg-gray-950 border border-gray-700 rounded-lg overflow-hidden my-2">
@@ -229,7 +232,7 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
       {hasOutput && (
         <AnsiOutput text={output} />
       )}
-      {state === 'output-available' && closed !== undefined && (
+      {!isExecuting && closed !== undefined && (
         <div className="px-3 py-1 text-xs text-gray-500 border-t border-gray-800 flex items-center gap-2">
           {closed ? (
             <span>退出码: {exitCode ?? 'N/A'}</span>
@@ -238,7 +241,7 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, sessio
           ) : null}
         </div>
       )}
-      {state !== 'output-available' && (
+      {isExecuting && (
         <div className="p-3 flex items-center gap-2 text-xs text-gray-400">
           <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
           执行中...
@@ -276,6 +279,125 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
     })
   }
 
+  const renderToolPart = (part: ReturnType<typeof message.parts.filter>[number], key: string) => {
+    if (!isToolOrDynamicToolUIPart(part)) return null
+    const name = 'toolName' in part ? part.toolName : part.type.replace('tool-', '')
+    const state = part.state
+    const args = 'input' in part ? part.input : undefined
+    const result = 'output' in part ? part.output : undefined
+    const approval = 'approval' in part ? part.approval : undefined
+    const preliminary = part.state === 'output-available' && 'preliminary' in part
+      ? (part as { state: 'output-available'; preliminary?: boolean }).preliminary
+      : undefined
+
+    // Handle approval-requested state (AI SDK built-in approval)
+    if (state === 'approval-requested' && approval) {
+      const command = (args as any)?.command || JSON.stringify(args)
+      return (
+        <ToolApprovalUI
+          key={key}
+          toolName={String(name)}
+          command={command}
+          approvalId={approval.id}
+          onApprove={onApproveToolCall}
+          serverId={serverId}
+          onAddSessionApproval={onAddSessionApproval}
+        />
+      )
+    }
+
+    // Handle output-denied state
+    if (state === 'output-denied') {
+      const command = (args as any)?.command || JSON.stringify(args)
+      return (
+        <div key={key} className="bg-red-950 border border-red-700 rounded-lg p-3 my-2 text-xs">
+          <div className="flex items-center gap-1.5 mb-1 text-red-400">
+            <Terminal className="w-3 h-3" />
+            <span className="font-mono">{String(name)}</span>
+            <span className="text-red-300">— 已拒绝</span>
+          </div>
+          <Code className="text-xs text-red-200 block bg-black/30 rounded px-2 py-1">{command}</Code>
+        </div>
+      )
+    }
+
+    // Special rendering for exec tool
+    if (name === 'exec') {
+      const command = (args as any)?.command || ''
+      const output = (result as any)?.output || ''
+      const exitCode = (result as any)?.exitCode
+      const closed = (result as any)?.closed
+      const streamId = (result as any)?.streamId
+      return (
+        <ExecResult
+          key={key}
+          command={command}
+          output={output}
+          state={state}
+          exitCode={exitCode}
+          closed={closed}
+          streamId={streamId}
+          preliminary={preliminary}
+          sessionId={sessionId}
+          serverId={serverId}
+          onAddSessionApproval={onAddSessionApproval}
+        />
+      )
+    }
+
+    // Render send-input, wait-output, send-password with output
+    if (name === 'send-input' || name === 'wait-output' || name === 'send-password') {
+      const output = (result as any)?.output || ''
+      const toolLabel = name === 'send-password' ? '发送密码' : name === 'send-input' ? '发送输入' : '等待输出'
+      return (
+        <div key={key} className="bg-gray-800 border border-gray-600 rounded-lg overflow-hidden text-xs my-2">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 text-blue-400 border-b border-gray-700">
+            <Settings className="w-3 h-3" style={{ animationPlayState: state === 'output-available' ? 'paused' : 'running' }} />
+            <span className="font-mono">{toolLabel}</span>
+            {state !== 'output-available' && <span className="text-gray-400">处理中...</span>}
+          </div>
+          {state === 'output-available' && output && (
+            <AnsiOutput text={output} />
+          )}
+        </div>
+      )
+    }
+
+    // Render request-user-input
+    if (name === 'request-user-input') {
+      const prompt = (args as any)?.prompt || '请输入'
+      const isPassword = (args as any)?.isPassword || false
+      const status = (result as any)?.status
+      return (
+        <UserInputTool
+          key={key}
+          prompt={prompt}
+          isPassword={isPassword}
+          state={state}
+          status={status}
+          streamId={(args as any)?.streamId}
+          output={(result as any)?.output}
+          onSubmit={onUserInputSubmit}
+        />
+      )
+    }
+
+    // Default rendering for other tools
+    return (
+      <div key={key} className="bg-gray-800 border border-gray-600 rounded-lg p-3 text-xs">
+        <div className="flex items-center gap-1.5 mb-1 text-blue-400">
+          <Settings className="w-3 h-3 animate-spin" style={{ animationPlayState: state === 'output-available' ? 'paused' : 'running' }} />
+          <span className="font-mono">{String(name)}</span>
+        </div>
+        {state === 'output-available' && result !== undefined && (
+          <pre className="text-gray-300 text-xs overflow-x-auto max-h-32 overflow-y-auto bg-black/30 rounded p-2 mt-1">
+            {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+          </pre>
+        )}
+      </div>
+    )
+  }
+
   if (isUser) {
     const textContent = message.parts
       .filter(isTextUIPart)
@@ -290,134 +412,38 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
     )
   }
 
-  const toolParts = message.parts.filter(isToolOrDynamicToolUIPart)
-  const textParts = message.parts.filter(isTextUIPart)
+  // Render assistant message parts in their original order,
+  // grouping consecutive text parts into a single bubble.
+  const rendered: React.ReactNode[] = []
+  let textGroup: string[] = []
+  let groupStartIdx = 0
 
-  return (
-    <div className="space-y-2">
-      {/* Text parts rendered FIRST, tool calls rendered below */}
-      {textParts.length > 0 && (
-        <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[95%]">
-          {textParts.map((part, i) => (
-            <div key={i}>{renderContent(part.text)}</div>
-          ))}
-        </div>
-      )}
-      {toolParts.map((part, i) => {
-        const name = 'toolName' in part ? part.toolName : part.type.replace('tool-', '')
-        const state = part.state
-        const args = 'input' in part ? part.input : undefined
-        const result = 'output' in part ? part.output : undefined
-        const approval = 'approval' in part ? part.approval : undefined
+  const flushTextGroup = (endIdx: number) => {
+    if (textGroup.length === 0) return
+    const texts = textGroup
+    const key = `text-${groupStartIdx}`
+    rendered.push(
+      <div key={key} className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[95%]">
+        {texts.map((t, i) => <div key={i}>{renderContent(t)}</div>)}
+      </div>
+    )
+    textGroup = []
+    groupStartIdx = endIdx
+  }
 
-        // Handle approval-requested state (AI SDK built-in approval)
-        if (state === 'approval-requested' && approval) {
-          const command = (args as any)?.command || JSON.stringify(args)
-          return (
-            <ToolApprovalUI
-              key={i}
-              toolName={String(name)}
-              command={command}
-              approvalId={approval.id}
-              onApprove={onApproveToolCall}
-              serverId={serverId}
-              onAddSessionApproval={onAddSessionApproval}
-            />
-          )
-        }
+  message.parts.forEach((part, i) => {
+    if (isTextUIPart(part)) {
+      if (textGroup.length === 0) groupStartIdx = i
+      textGroup.push(part.text)
+    } else {
+      flushTextGroup(i)
+      const el = renderToolPart(part, String(i))
+      if (el) rendered.push(el)
+    }
+  })
+  flushTextGroup(message.parts.length)
 
-        // Handle output-denied state
-        if (state === 'output-denied') {
-          const command = (args as any)?.command || JSON.stringify(args)
-          return (
-            <div key={i} className="bg-red-950 border border-red-700 rounded-lg p-3 my-2 text-xs">
-              <div className="flex items-center gap-1.5 mb-1 text-red-400">
-                <Terminal className="w-3 h-3" />
-                <span className="font-mono">{String(name)}</span>
-                <span className="text-red-300">— 已拒绝</span>
-              </div>
-              <Code className="text-xs text-red-200 block bg-black/30 rounded px-2 py-1">{command}</Code>
-            </div>
-          )
-        }
-
-        // Special rendering for exec tool
-        if (name === 'exec') {
-          const command = (args as any)?.command || ''
-          const output = (result as any)?.output || ''
-          const exitCode = (result as any)?.exitCode
-          const closed = (result as any)?.closed
-          const streamId = (result as any)?.streamId
-          return (
-            <ExecResult
-              key={i}
-              command={command}
-              output={output}
-              state={state}
-              exitCode={exitCode}
-              closed={closed}
-              streamId={streamId}
-              sessionId={sessionId}
-              serverId={serverId}
-              onAddSessionApproval={onAddSessionApproval}
-            />
-          )
-        }
-
-        // Render send-input, wait-output, send-password with output
-        if (name === 'send-input' || name === 'wait-output' || name === 'send-password') {
-          const output = (result as any)?.output || ''
-          const toolLabel = name === 'send-password' ? '发送密码' : name === 'send-input' ? '发送输入' : '等待输出'
-          return (
-            <div key={i} className="bg-gray-800 border border-gray-600 rounded-lg overflow-hidden text-xs my-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-blue-400 border-b border-gray-700">
-                <Settings className="w-3 h-3" style={{ animationPlayState: state === 'output-available' ? 'paused' : 'running' }} />
-                <span className="font-mono">{toolLabel}</span>
-                {state !== 'output-available' && <span className="text-gray-400">处理中...</span>}
-              </div>
-              {state === 'output-available' && output && (
-                <AnsiOutput text={output} />
-              )}
-            </div>
-          )
-        }
-
-        // Render request-user-input
-        if (name === 'request-user-input') {
-          const prompt = (args as any)?.prompt || '请输入'
-          const isPassword = (args as any)?.isPassword || false
-          const status = (result as any)?.status
-          return (
-            <UserInputTool
-              key={i}
-              prompt={prompt}
-              isPassword={isPassword}
-              state={state}
-              status={status}
-              streamId={(args as any)?.streamId}
-              output={(result as any)?.output}
-              onSubmit={onUserInputSubmit}
-            />
-          )
-        }
-
-        // Default rendering for other tools
-        return (
-          <div key={i} className="bg-gray-800 border border-gray-600 rounded-lg p-3 text-xs">
-            <div className="flex items-center gap-1.5 mb-1 text-blue-400">
-              <Settings className="w-3 h-3 animate-spin" style={{ animationPlayState: state === 'output-available' ? 'paused' : 'running' }} />
-              <span className="font-mono">{String(name)}</span>
-            </div>
-            {state === 'output-available' && result !== undefined && (
-              <pre className="text-gray-300 text-xs overflow-x-auto max-h-32 overflow-y-auto bg-black/30 rounded p-2 mt-1">
-                {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-              </pre>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
+  return <div className="space-y-2">{rendered}</div>
 }
 
 function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, onAddSessionApproval }: {
