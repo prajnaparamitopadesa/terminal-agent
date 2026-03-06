@@ -192,6 +192,49 @@ async function collectExecOutput(
   };
 }
 
+const COMPACT_RUN_THRESHOLD = 5;
+
+/**
+ * Format a list of 1-based line numbers from a file into a compact string.
+ * Consecutive runs of COMPACT_RUN_THRESHOLD or more lines only show the first
+ * and last line with their numbers; shorter runs show every line with its number.
+ */
+function formatLinesCompact(allLines: string[], lineNums: number[]): string {
+  if (lineNums.length === 0) return '';
+
+  // Split into consecutive runs
+  const runs: number[][] = [];
+  let run: number[] = [lineNums[0]];
+  for (let i = 1; i < lineNums.length; i++) {
+    if (lineNums[i] === lineNums[i - 1] + 1) {
+      run.push(lineNums[i]);
+    } else {
+      runs.push(run);
+      run = [lineNums[i]];
+    }
+  }
+  runs.push(run);
+
+  const parts: string[] = [];
+  for (const r of runs) {
+    if (r.length >= COMPACT_RUN_THRESHOLD) {
+      const first = r[0];
+      const last = r[r.length - 1];
+      const firstLine = allLines[first - 1] ?? '';
+      const lastLine = allLines[last - 1] ?? '';
+      const omitted = r.length - 2;
+      parts.push(`${first}: ${firstLine}`);
+      parts.push(`... [${omitted} 行省略] ...`);
+      parts.push(`${last}: ${lastLine}`);
+    } else {
+      for (const n of r) {
+        parts.push(`${n}: ${allLines[n - 1] ?? ''}`);
+      }
+    }
+  }
+  return parts.join('\n');
+}
+
 function createTools(ctx: AgentContext) {
   return {
     "exec": tool({
@@ -421,22 +464,26 @@ function createTools(ctx: AgentContext) {
       description: `读取命令执行的完整输出文件。当 exec 工具输出过长被截断时使用（exec 会返回 outputId）。
 支持两种模式：
 - 按行号范围读取：指定 startLine 和/或 endLine
-- 按关键词或正则搜索：指定 keyword 或 regex，返回所有匹配行及其行号`,
+- 按关键词或正则搜索：指定 keyword 或 regex，返回所有匹配行及其行号。可用 contextBefore/contextAfter 指定匹配行的上下文行数
+
+返回格式：紧凑的文本，连续5行以上只显示首尾行号。搜索结果自动排重。`,
       inputSchema: z.object({
         outputId: z.string().describe("exec 工具返回的 outputId"),
         startLine: z.number().optional().describe("起始行号（从 1 开始），不指定则从第 1 行开始"),
         endLine: z.number().optional().describe("结束行号，不指定则读到最后一行"),
         keyword: z.string().optional().describe("搜索关键词（大小写不敏感）"),
         regex: z.string().optional().describe("搜索正则表达式"),
+        contextBefore: z.number().optional().describe("搜索模式下：每个匹配行前面的上下文行数，默认 0"),
+        contextAfter: z.number().optional().describe("搜索模式下：每个匹配行后面的上下文行数，默认 0"),
       }),
-      async *execute({ outputId, startLine, endLine, keyword, regex }) {
+      async *execute({ outputId, startLine, endLine, keyword, regex, contextBefore = 0, contextAfter = 0 }) {
         const filePath = path.join(execOutputDir, `${outputId}.log`);
         try {
           const content = readFileSync(filePath, 'utf-8');
           const lines = content.split('\n');
           const totalLines = lines.length;
 
-          let result: Array<{ lineNum: number; line: string }>;
+          let matchedLineNums: number[]; // 1-based
 
           if (keyword || regex) {
             let pattern: RegExp;
@@ -446,18 +493,30 @@ function createTools(ctx: AgentContext) {
               yield { error: `正则表达式无效: ${e}`, totalLines };
               return;
             }
-            result = lines
+            matchedLineNums = lines
               .map((line, i) => ({ lineNum: i + 1, line }))
-              .filter(({ line }) => pattern.test(line));
+              .filter(({ line }) => pattern.test(line))
+              .map(({ lineNum }) => lineNum);
+
+            // Expand with context and deduplicate
+            const lineNumSet = new Set<number>();
+            for (const n of matchedLineNums) {
+              const lo = Math.max(1, n - contextBefore);
+              const hi = Math.min(totalLines, n + contextAfter);
+              for (let i = lo; i <= hi; i++) lineNumSet.add(i);
+            }
+            matchedLineNums = Array.from(lineNumSet).sort((a, b) => a - b);
           } else {
             const start = Math.max(1, startLine ?? 1);
             const end = Math.min(totalLines, endLine ?? totalLines);
-            result = lines
-              .slice(start - 1, end)
-              .map((line, i) => ({ lineNum: start + i, line }));
+            matchedLineNums = [];
+            for (let i = start; i <= end; i++) matchedLineNums.push(i);
           }
 
-          yield { lines: result, totalLines, outputId };
+          // Format lines compactly: consecutive runs of 5+ lines show only first/last line number
+          const formatted = formatLinesCompact(lines, matchedLineNums);
+
+          yield { lines: formatted, totalLines, outputId };
         } catch {
           yield { error: `文件不存在或无法读取: exec-output/${outputId}.log`, outputId };
         }

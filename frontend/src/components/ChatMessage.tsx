@@ -454,6 +454,8 @@ function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, on
   serverId: number
   onAddSessionApproval: (command: string) => void
 }) {
+  const [showApprovalDialog, setShowApprovalDialog] = useState(false)
+
   return (
     <div className="bg-yellow-900/40 border border-yellow-700 rounded-lg p-3 my-2">
       <p className="text-yellow-300 text-xs font-medium mb-1">⚠️ {toolName} 需要审批</p>
@@ -509,6 +511,10 @@ function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, on
               >
                 允许完全匹配的命令（仅本次会话）
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setShowApprovalDialog(true)}>
+                允许命令...
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -521,6 +527,13 @@ function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, on
           ✗ 拒绝
         </Button>
       </div>
+      {showApprovalDialog && (
+        <ApprovalDialog
+          command={command}
+          serverId={serverId}
+          onClose={() => setShowApprovalDialog(false)}
+        />
+      )}
     </div>
   )
 }
