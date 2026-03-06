@@ -165,12 +165,19 @@ export async function execCommand(sessionId: string, command: string): Promise<s
   const streamId = `exec_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   debugLog(`execCommand start: streamId=${streamId} command=${command}`);
 
+  // Encode the command as base64 and pass it as a positional parameter ($1) to
+  // avoid all shell-escaping issues. base64 output only contains the characters
+  // [A-Za-z0-9+/=] so the value is safe to embed unquoted. The inner bash
+  // decodes and runs the original command.
+  const b64 = Buffer.from(command).toString('base64');
+  const wrappedCommand = `/bin/bash -c 'echo "$1" | base64 -d | /bin/bash' -- ${b64}`;
+
   return new Promise((resolve, reject) => {
     // Do NOT use pty:true — PTY causes programs like systemctl to invoke a pager
     // (e.g. `less`) that waits for user input, stalling the stream indefinitely.
     // Without PTY, commands run non-interactively and exit cleanly.
     // Both stdout AND stderr must be consumed to prevent backpressure stalls.
-    client.exec(command, (err: Error | undefined, stream: any) => {
+    client.exec(wrappedCommand, (err: Error | undefined, stream: any) => {
       if (err) {
         debugLog(`execCommand error: streamId=${streamId}`, err.message);
         return reject(err);

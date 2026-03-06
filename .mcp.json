@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "terminal-agent-sqlite": {
+      "type": "stdio",
+      "command": "bun",
+      "args": ["run", "src/mcp-sqlite.ts"],
+      "cwd": "backend",
+      "env": {
+        "SQLITE_DB_PATH": "terminal-agent.db"
+      },
+      "description": "SQLite MCP server for the local terminal-agent database. Provides list_tables, describe_table, query, and execute tools."
+    }
+  }
+}
