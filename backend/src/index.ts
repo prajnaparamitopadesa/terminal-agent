@@ -4,7 +4,7 @@ import { generateText, createAgentUIStreamResponse, createIdGenerator } from "ai
 import { createSession, connectSSH, sendInput, resizeTerminal, removeSession } from "./terminal";
 import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts, getAiModels, getAiModelById, createAiModel, updateAiModel, deleteAiModel } from "./db";
 import { createTerminalAgent, getPendingUserInputs, resolveUserInput } from "./agent";
-import dashscope from "./dashscope-model";
+import dashscope, { createModelClient } from "./dashscope-model";
 
 // Map of sessionId -> set of WebSocket connections for terminal
 const terminalWsMap = new Map<string, Set<any>>();
@@ -125,11 +125,12 @@ const app = new Elysia()
     return model;
   })
   .post("/api/ai-models", ({ body }) => {
-    const { model_name, provider, capabilities, enabled } = body as any;
-    return createAiModel({ model_name, provider, capabilities, enabled });
+    const { model_name, display_name, provider, capabilities, enabled } = body as any;
+    return createAiModel({ model_name, display_name, provider, capabilities, enabled });
   }, {
     body: t.Object({
       model_name: t.String(),
+      display_name: t.Optional(t.String()),
       provider: t.String(),
       capabilities: t.Optional(t.Record(t.String(), t.Boolean())),
       enabled: t.Optional(t.String()),
@@ -141,6 +142,7 @@ const app = new Elysia()
   }, {
     body: t.Object({
       model_name: t.Optional(t.String()),
+      display_name: t.Optional(t.String()),
       provider: t.Optional(t.String()),
       capabilities: t.Optional(t.Record(t.String(), t.Boolean())),
       enabled: t.Optional(t.String()),
@@ -289,14 +291,16 @@ Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
 
     // Resolve model: use DB model if modelId provided, else fall back to env config
     let modelName = process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus";
+    let modelProvider = '阿里云';
     if (modelId) {
       const dbModel = getAiModelById(modelId);
       if (dbModel && dbModel.enabled === 'Y') {
         modelName = dbModel.model_name;
+        modelProvider = dbModel.provider;
       }
     }
 
-    const model = dashscope(modelName);
+    const model = createModelClient(modelName, modelProvider);
     const agent = createTerminalAgent(model, {
       sessionId,
       serverId: serverId || 0,

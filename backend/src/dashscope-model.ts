@@ -588,11 +588,55 @@ function mapFinishReason(finishReason: string | null | undefined): LanguageModel
   }
 }
 
+import { readFileSync } from 'fs';
+import pathModule from 'path';
+import { fileURLToPath } from 'url';
+
+interface ProviderConfig {
+  name: string;
+  label?: string;
+  base_url: string;
+  api_key: string;
+}
+
+let _providerConfigs: ProviderConfig[] | null = null;
+
+function loadProviderConfig(providerName: string): { api_key: string; base_url: string } {
+  if (_providerConfigs === null) {
+    try {
+      const configPath = pathModule.join(
+        pathModule.dirname(fileURLToPath(import.meta.url)),
+        '..',
+        'model-provider.json'
+      );
+      const raw = readFileSync(configPath, 'utf-8');
+      _providerConfigs = JSON.parse(raw).providers || [];
+    } catch (e: any) {
+      if (!String(e?.code).includes('ENOENT')) {
+        console.warn('Failed to load model-provider.json:', e?.message || e);
+      }
+      _providerConfigs = [];
+    }
+  }
+
+  const found = _providerConfigs!.find(p => p.name === providerName);
+  if (found) {
+    return { api_key: found.api_key, base_url: found.base_url };
+  }
+
+  // Fallback to env vars for backward compatibility
+  return {
+    api_key: process.env.DASHSCOPE_API_KEY || '',
+    base_url: process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  };
+}
+
+export function createModelClient(modelId: string, provider: string): DashscopeChatLanguageModel {
+  const { api_key, base_url } = loadProviderConfig(provider);
+  return new DashscopeChatLanguageModel(modelId, api_key, base_url);
+}
 
 export default function dashscope(modelId: string): DashscopeChatLanguageModel {
-  return new DashscopeChatLanguageModel(
-    modelId,
-    process.env.DASHSCOPE_API_KEY || '',
-    process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-  );
+  const { api_key, base_url } = loadProviderConfig('阿里云');
+  return new DashscopeChatLanguageModel(modelId, api_key, base_url);
 }

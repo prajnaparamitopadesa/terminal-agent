@@ -36,6 +36,7 @@ console.log(`Loading models from: ${configPath}`);
 
 interface ModelEntry {
   model_name: string;
+  display_name?: string;
   capabilities?: Record<string, boolean>;
   enabled?: "Y" | "N";
 }
@@ -75,11 +76,12 @@ for (const provider of config.providers) {
     }
     createAiModel({
       model_name: model.model_name,
+      display_name: model.display_name,
       provider: provider.name,
       capabilities: model.capabilities ?? {},
       enabled: model.enabled ?? "Y",
     });
-    console.log(`  INSERT ${model.model_name} (${provider.name}) — enabled=${model.enabled ?? "Y"}`);
+    console.log(`  INSERT ${model.model_name} (${provider.name}) display=${model.display_name ?? model.model_name} — enabled=${model.enabled ?? "Y"}`);
     inserted++;
   }
 }
