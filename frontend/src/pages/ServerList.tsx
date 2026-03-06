@@ -20,9 +20,25 @@ interface ConfirmState {
   affectedModels?: AiModel[]
 }
 
+const TAB_STORAGE_KEY = 'serverList_activeTab'
+
+function getStoredTab(): Tab {
+  try {
+    const stored = localStorage.getItem(TAB_STORAGE_KEY)
+    if (stored === 'servers' || stored === 'models' || stored === 'providers') return stored
+  } catch (e) {
+    console.warn('Failed to retrieve stored tab:', e)
+  }
+  return 'servers'
+}
+
 export default function ServerList() {
-  const [tab, setTab] = useState<Tab>('servers')
+  const [tab, setTab] = useState<Tab>(getStoredTab)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    try { localStorage.setItem(TAB_STORAGE_KEY, tab) } catch (e) { console.warn('Failed to save tab state:', e) }
+  }, [tab])
 
   // ── Confirmation dialog ───────────────────────────────────────────────────
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)

@@ -9,6 +9,9 @@ import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, a
 import { createTerminalAgent, getPendingUserInputs, resolveUserInput } from "./agent";
 import dashscope, { createModelClient } from "./dashscope-model";
 import { frontendAssets } from "./frontend-assets";
+// Inline example data — bundled by bun so it is always available in the compiled exe
+import exampleProviderData from "../model-provider.example.json";
+import exampleModelData from "../models.example.json";
 
 // ── Startup initialization ──────────────────────────────────────────────────
 function getBackendDir(): string {
@@ -20,9 +23,12 @@ function getBackendDir(): string {
 }
 
 const backendDir = getBackendDir();
-const backendRoot = pathModule.join(backendDir, '..');
+// In dev mode import.meta.url points to src/index.ts, so backendRoot is backend/.
+// In exe mode import.meta.url points to the exe itself, so backendDir IS the app dir.
+const isExeMode = frontendAssets !== null;
+const backendRoot = isExeMode ? backendDir : pathModule.join(backendDir, '..');
 
-// Migrate model-provider.json to DB if providers table is empty and file exists
+// Migrate model-provider.json to DB if it exists next to the entry-point
 const modelProviderPath = pathModule.join(backendRoot, 'model-provider.json');
 if (existsSync(modelProviderPath)) {
   try {
@@ -32,26 +38,22 @@ if (existsSync(modelProviderPath)) {
   }
 }
 
-// Seed providers and models from example data if both tables are empty
+// Seed providers and models from built-in example data if both tables are empty.
+// Using inline imports ensures the data is available in the compiled exe without
+// needing any external files on the user's machine.
 {
   const providerCount = getProviders().length;
   const modelCount = getAiModels().length;
   if (providerCount === 0 && modelCount === 0) {
-    const exampleProviderPath = pathModule.join(backendRoot, 'model-provider.example.json');
-    const exampleModelsPath = pathModule.join(backendRoot, 'models.example.json');
-    if (existsSync(exampleProviderPath)) {
-      try {
-        seedProvidersFromJson(readFileSync(exampleProviderPath, 'utf-8'));
-      } catch (e) {
-        console.warn('Failed to seed providers from example:', e);
-      }
+    try {
+      seedProvidersFromJson(exampleProviderData);
+    } catch (e) {
+      console.warn('Failed to seed providers from example:', e);
     }
-    if (existsSync(exampleModelsPath)) {
-      try {
-        seedModelsFromJson(readFileSync(exampleModelsPath, 'utf-8'));
-      } catch (e) {
-        console.warn('Failed to seed models from example:', e);
-      }
+    try {
+      seedModelsFromJson(exampleModelData);
+    } catch (e) {
+      console.warn('Failed to seed models from example:', e);
     }
   }
 }
