@@ -20,7 +20,8 @@ export default function TerminalPanel({ server, sessionId }: Props) {
   const [connecting, setConnecting] = useState(false)
   const [password, setPassword] = useState('')
   const [rememberPassword, setRememberPassword] = useState(server?.has_password || false)
-  const [showPasswordInput, setShowPasswordInput] = useState(true)
+  const [showPasswordInput, setShowPasswordInput] = useState(!server?.has_password)
+  const hasAutoConnected = useRef(false)
 
   useEffect(() => {
     if (!termRef.current) return
@@ -76,7 +77,6 @@ export default function TerminalPanel({ server, sessionId }: Props) {
     if (!server) return
     setConnecting(true)
     setShowPasswordInput(false)
-
     // Save or remove password on the server
     if (rememberPassword && pwd) {
       fetch(`/api/servers/${server.id}/password`, {
@@ -129,6 +129,15 @@ export default function TerminalPanel({ server, sessionId }: Props) {
       setShowPasswordInput(true)
     }
   }
+
+  // Auto-connect using saved password when the server has one (skip the dialog)
+  useEffect(() => {
+    if (server?.has_password && !hasAutoConnected.current) {
+      hasAutoConnected.current = true
+      connect('')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server?.id, server?.has_password])
 
   return (
     <div className="h-full flex flex-col bg-gray-950">
