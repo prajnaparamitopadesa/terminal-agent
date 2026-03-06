@@ -46,8 +46,8 @@ export async function connectSSH(
 
     session.client
       .on("ready", () => {
-        // Force bash regardless of the server's configured default shell
-        session.client.exec('bash -l', { pty: { term: "xterm-256color", cols: 220, rows: 50 } }, (err, stream) => {
+        // Use the server's default shell via shell() rather than forcing bash
+        session.client.shell({ term: "xterm-256color", cols: 220, rows: 50 }, (err, stream) => {
           if (err) return reject(err);
           session.stream = stream;
           stream.on("data", (data: Buffer) => {

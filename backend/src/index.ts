@@ -125,14 +125,33 @@ const app = new Elysia()
   
   // Convert to regex using AI
   .post("/api/convert-to-regex", async ({ body }) => {
-    const { command, requirement } = body as { command: string; requirement?: string };
+    const { command, requirement, history } = body as {
+      command: string;
+      requirement?: string;
+      history?: Array<{ requirement: string; regex: string }>;
+    };
     const requirementClause = requirement?.trim()
       ? ` based on the requirement: ${requirement.trim()}`
       : "";
+
+    // Build context from previous rejected attempts
+    let historyClause = "";
+    if (history && history.length > 0) {
+      const examples = history
+        .map(h => {
+          // Escape newlines to prevent prompt injection
+          const req = h.requirement.replace(/\n/g, ' ').slice(0, 200);
+          const rx = h.regex.replace(/\n/g, ' ').slice(0, 200);
+          return `- Requirement: "${req}" → Regex: "${rx}" (rejected by user)`;
+        })
+        .join("\n");
+      historyClause = `\n\nPrevious attempts that were rejected by the user (use these as negative examples to generate a better pattern):\n${examples}`;
+    }
+
     const result = await generateText({
       model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"),
       prompt: `Convert this shell command to a regex pattern${requirementClause}.
-Command: ${command}
+Command: ${command}${historyClause}
 Return only the regex pattern, no explanation.`,
       maxOutputTokens: 200,
     });

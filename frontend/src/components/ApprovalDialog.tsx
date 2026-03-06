@@ -17,12 +17,19 @@ interface Props {
   onClose: () => void
 }
 
+interface ConvTurn {
+  requirement: string
+  regex: string
+}
+
 export default function ApprovalDialog({ command, serverId, onClose }: Props) {
   const [pattern, setPattern] = useState(command)
   const [isRegex, setIsRegex] = useState(false)
   const [requirement, setRequirement] = useState('')
   const [scope, setScope] = useState<'global' | 'server'>('global')
   const [converting, setConverting] = useState(false)
+  // Multi-turn conversation history: each entry is a rejected attempt (user requirement + AI regex)
+  const [history, setHistory] = useState<ConvTurn[]>([])
 
   const convertToRegex = async () => {
     setConverting(true)
@@ -30,11 +37,21 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
       const res = await fetch('/api/convert-to-regex', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, requirement: requirement || undefined }),
+        body: JSON.stringify({
+          command,
+          requirement: requirement || undefined,
+          history: history.length > 0 ? history : undefined,
+        }),
       })
       const data = await res.json()
-      setPattern(data.regex)
-      setIsRegex(true)
+      if (data.regex) {
+        // Record this attempt in history so next call can use it as a rejected example
+        if (requirement) {
+          setHistory(prev => [...prev, { requirement, regex: data.regex }])
+        }
+        setPattern(data.regex)
+        setIsRegex(true)
+      }
     } catch {}
     setConverting(false)
   }

@@ -158,6 +158,16 @@ export default function TerminalPanel({ server, sessionId }: Props) {
         </div>
       </div>
 
+      {/* Auto-login overlay when server has saved password and is connecting */}
+      {!showPasswordInput && connecting && !connected && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-950/90 z-10">
+          <div className="flex flex-col items-center gap-3 text-gray-400">
+            <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm">自动登录中...</span>
+          </div>
+        </div>
+      )}
+
       {showPasswordInput && !connected && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-950/90 z-10">
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80">
