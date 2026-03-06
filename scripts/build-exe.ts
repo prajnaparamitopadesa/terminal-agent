@@ -98,6 +98,12 @@ execSync(
   { cwd: rootDir, stdio: 'inherit', shell: false }
 );
 
+// ── Step 4: Restore frontend-assets.ts stub ───────────────────────────────────
+// Restore the stub so the source file is not left in a modified state after building.
+const STUB_CONTENT = `// Stub file — overwritten by scripts/build-exe.ts when packaging the Windows exe.\n// In dev mode this exports null, causing the backend to serve files from the filesystem.\nexport const frontendAssets: Map<string, { content: Buffer; mimeType: string }> | null = null;\n`;
+writeFileSync(embeddedAssetsFile, STUB_CONTENT, 'utf-8');
+console.log('✅ Restored frontend-assets.ts stub');
+
 console.log('');
 console.log('🎉 Build complete!');
 console.log(`   Executable: ${exePath}`);

@@ -3,6 +3,17 @@ import { Database } from "bun:sqlite";
 const db = new Database("terminal-agent.db", { create: true });
 
 db.run(`
+  CREATE TABLE IF NOT EXISTS providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    label TEXT,
+    base_url TEXT NOT NULL,
+    api_key TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+db.run(`
   CREATE TABLE IF NOT EXISTS servers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
@@ -299,5 +310,66 @@ export function seedModelsFromJson(jsonContent: string): void {
         enabled: model.enabled ?? 'Y',
       });
     }
+  }
+}
+
+// Provider CRUD
+export interface ProviderRow {
+  id: number;
+  name: string;
+  label?: string;
+  base_url: string;
+  api_key: string;
+  created_at: string;
+}
+
+export function getProviders(): ProviderRow[] {
+  return db.query("SELECT * FROM providers ORDER BY id").all() as ProviderRow[];
+}
+
+export function getProviderByName(name: string): ProviderRow | null {
+  return db.query("SELECT * FROM providers WHERE name = ?").get(name) as ProviderRow | null;
+}
+
+export function createProvider(data: { name: string; label?: string; base_url: string; api_key: string }): ProviderRow {
+  const stmt = db.prepare("INSERT INTO providers (name, label, base_url, api_key) VALUES (?, ?, ?, ?)");
+  const result = stmt.run(data.name, data.label || null, data.base_url, data.api_key);
+  return db.query("SELECT * FROM providers WHERE id = ?").get(Number(result.lastInsertRowid)) as ProviderRow;
+}
+
+export function updateProvider(name: string, data: { name?: string; label?: string; base_url?: string; api_key?: string }): void {
+  const current = getProviderByName(name);
+  if (!current) return;
+  db.run(
+    "UPDATE providers SET name = ?, label = ?, base_url = ?, api_key = ? WHERE name = ?",
+    [data.name ?? current.name, data.label !== undefined ? data.label : (current.label ?? null), data.base_url ?? current.base_url, data.api_key ?? current.api_key, name]
+  );
+}
+
+export function deleteProvider(name: string): void {
+  db.run("DELETE FROM providers WHERE name = ?", [name]);
+}
+
+export function seedProvidersFromJson(jsonContent: string): void {
+  const count = db.query("SELECT COUNT(*) as n FROM providers").get() as { n: number };
+  if (count?.n > 0) return; // Only seed if empty
+
+  const data = JSON.parse(jsonContent);
+  for (const provider of data.providers || []) {
+    createProvider({
+      name: provider.name,
+      label: provider.label,
+      base_url: provider.base_url,
+      api_key: provider.api_key,
+    });
+  }
+}
+
+// Clear conversations
+export function clearConversations(server_id?: number): void {
+  if (server_id !== undefined) {
+    db.run("DELETE FROM conversations WHERE server_id = ?", [server_id]);
+  } else {
+    db.run("DELETE FROM conversations");
   }
 }

@@ -5,9 +5,9 @@ import pathModule from "path";
 import { fileURLToPath } from "url";
 import { generateText, createAgentUIStreamResponse, createIdGenerator } from "ai";
 import { createSession, connectSSH, sendInput, resizeTerminal, removeSession } from "./terminal";
-import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts, getAiModels, getAiModelById, createAiModel, updateAiModel, deleteAiModel, seedModelsFromJson } from "./db";
+import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, clearConversations, getRecentPrompts, getAiModels, getAiModelById, createAiModel, updateAiModel, deleteAiModel, seedModelsFromJson, getProviders, getProviderByName, createProvider, updateProvider, deleteProvider, seedProvidersFromJson } from "./db";
 import { createTerminalAgent, getPendingUserInputs, resolveUserInput } from "./agent";
-import dashscope, { createModelClient, getAllProviders, saveAllProviders, invalidateProviderCache, initProviderConfigIfMissing, ProviderConfig } from "./dashscope-model";
+import dashscope, { createModelClient } from "./dashscope-model";
 import { frontendAssets } from "./frontend-assets";
 
 // ── Startup initialization ──────────────────────────────────────────────────
@@ -22,19 +22,37 @@ function getBackendDir(): string {
 const backendDir = getBackendDir();
 const backendRoot = pathModule.join(backendDir, '..');
 
-// Initialize model-provider.json from example if missing
-const exampleProviderPath = pathModule.join(backendRoot, 'model-provider.example.json');
-if (existsSync(exampleProviderPath)) {
-  initProviderConfigIfMissing(readFileSync(exampleProviderPath, 'utf-8'));
+// Migrate model-provider.json to DB if providers table is empty and file exists
+const modelProviderPath = pathModule.join(backendRoot, 'model-provider.json');
+if (existsSync(modelProviderPath)) {
+  try {
+    seedProvidersFromJson(readFileSync(modelProviderPath, 'utf-8'));
+  } catch (e) {
+    console.warn('Failed to migrate model-provider.json to DB:', e);
+  }
 }
 
-// Seed AI models from models.example.json if table is empty
-const exampleModelsPath = pathModule.join(backendRoot, 'models.example.json');
-if (existsSync(exampleModelsPath)) {
-  try {
-    seedModelsFromJson(readFileSync(exampleModelsPath, 'utf-8'));
-  } catch (e) {
-    console.warn('Failed to seed models:', e);
+// Seed providers and models from example data if both tables are empty
+{
+  const providerCount = getProviders().length;
+  const modelCount = getAiModels().length;
+  if (providerCount === 0 && modelCount === 0) {
+    const exampleProviderPath = pathModule.join(backendRoot, 'model-provider.example.json');
+    const exampleModelsPath = pathModule.join(backendRoot, 'models.example.json');
+    if (existsSync(exampleProviderPath)) {
+      try {
+        seedProvidersFromJson(readFileSync(exampleProviderPath, 'utf-8'));
+      } catch (e) {
+        console.warn('Failed to seed providers from example:', e);
+      }
+    }
+    if (existsSync(exampleModelsPath)) {
+      try {
+        seedModelsFromJson(readFileSync(exampleModelsPath, 'utf-8'));
+      } catch (e) {
+        console.warn('Failed to seed models from example:', e);
+      }
+    }
   }
 }
 
@@ -87,17 +105,14 @@ const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
 const app = new Elysia()
   .use(cors())
   
-  // ── Provider management (model-provider.json) ──────────────────────────────
-  .get("/api/providers", () => getAllProviders())
+  // ── Provider management (database) ──────────────────────────────────────────
+  .get("/api/providers", () => getProviders())
   .post("/api/providers", ({ body }) => {
-    const provider = body as ProviderConfig;
-    const providers = getAllProviders();
-    if (providers.find(p => p.name === provider.name)) {
+    const b = body as { name: string; label?: string; base_url: string; api_key: string };
+    if (getProviderByName(b.name)) {
       return new Response(JSON.stringify({ error: 'Provider name already exists' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
     }
-    providers.push(provider);
-    saveAllProviders(providers);
-    return provider;
+    return createProvider(b);
   }, {
     body: t.Object({
       name: t.String(),
@@ -108,19 +123,9 @@ const app = new Elysia()
   })
   .put("/api/providers/:name", ({ params, body }) => {
     const b = body as { name?: string; label?: string; base_url?: string; api_key?: string };
-    const providers = getAllProviders();
-    const idx = providers.findIndex(p => p.name === params.name);
-    if (idx === -1) return new Response('Not found', { status: 404 });
-    const updated: ProviderConfig = {
-      name: b.name ?? providers[idx].name,
-      label: b.label ?? providers[idx].label,
-      base_url: b.base_url ?? providers[idx].base_url,
-      api_key: b.api_key ?? providers[idx].api_key,
-    };
-    providers[idx] = updated;
-    saveAllProviders(providers);
-    invalidateProviderCache();
-    return providers[idx];
+    if (!getProviderByName(params.name)) return new Response('Not found', { status: 404 });
+    updateProvider(params.name, b);
+    return getProviderByName(b.name ?? params.name);
   }, {
     body: t.Object({
       name: t.Optional(t.String()),
@@ -130,10 +135,7 @@ const app = new Elysia()
     })
   })
   .delete("/api/providers/:name", ({ params }) => {
-    const providers = getAllProviders();
-    const filtered = providers.filter(p => p.name !== params.name);
-    saveAllProviders(filtered);
-    invalidateProviderCache();
+    deleteProvider(params.name);
     return { success: true };
   })
 
@@ -226,6 +228,11 @@ const app = new Elysia()
   })
   .delete("/api/conversations/:id", ({ params }) => {
     deleteConversation(Number(params.id));
+    return { success: true };
+  })
+  .delete("/api/conversations", ({ query }) => {
+    const server_id = query.server_id ? Number(query.server_id) : undefined;
+    clearConversations(server_id);
     return { success: true };
   })
   .get("/api/prompts/recent", ({ query }) => {
@@ -510,3 +517,20 @@ Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
   .listen(3101);
 
 console.log("Backend running on http://localhost:3101");
+
+// Auto-open browser when running as compiled exe (embedded assets are present)
+if (embeddedAssets) {
+  const url = "http://localhost:3101";
+  try {
+    const platform = process.platform;
+    if (platform === 'win32') {
+      Bun.spawn(['cmd', '/c', 'start', url]);
+    } else if (platform === 'darwin') {
+      Bun.spawn(['open', url]);
+    } else {
+      Bun.spawn(['xdg-open', url]);
+    }
+  } catch (e) {
+    console.warn('Failed to open browser:', e);
+  }
+}

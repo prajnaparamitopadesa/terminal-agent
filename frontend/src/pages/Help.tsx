@@ -39,7 +39,8 @@ export default function Help() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-gray-950 p-8">
+    <div className="h-screen overflow-y-auto bg-gray-950">
+    <div className="p-8">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
@@ -127,7 +128,7 @@ export default function Help() {
           <div className="space-y-4 text-sm">
             <div>
               <p className="text-gray-200 font-medium">API Key 存储在哪里？</p>
-              <p className="text-gray-400 mt-1">API Key 保存在后端目录的 <Code>model-provider.json</Code> 文件中，不会上传到任何服务器。</p>
+              <p className="text-gray-400 mt-1">服务商配置（包括 API Key）和模型配置均保存在本地 SQLite 数据库（<Code>terminal-agent.db</Code>）中，不会上传到任何服务器。</p>
             </div>
             <div>
               <p className="text-gray-200 font-medium">AI 执行命令有什么限制？</p>
@@ -135,7 +136,7 @@ export default function Help() {
             </div>
             <div>
               <p className="text-gray-200 font-medium">模型配置保存在哪里？</p>
-              <p className="text-gray-400 mt-1">模型配置保存在本地 SQLite 数据库（<Code>terminal-agent.db</Code>）中，服务商配置保存在 <Code>model-provider.json</Code> 中。</p>
+              <p className="text-gray-400 mt-1">模型配置和服务商配置均保存在本地 SQLite 数据库（<Code>terminal-agent.db</Code>）中。</p>
             </div>
           </div>
         </div>
@@ -147,6 +148,7 @@ export default function Help() {
           </Button>
         </div>
       </div>
+    </div>
     </div>
   )
 }
