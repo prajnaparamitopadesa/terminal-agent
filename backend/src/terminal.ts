@@ -46,7 +46,8 @@ export async function connectSSH(
 
     session.client
       .on("ready", () => {
-        session.client.shell({ term: "xterm-256color", cols: 220, rows: 50 }, (err, stream) => {
+        // Force bash regardless of the server's configured default shell
+        session.client.exec('bash -l', { pty: { term: "xterm-256color", cols: 220, rows: 50 } }, (err, stream) => {
           if (err) return reject(err);
           session.stream = stream;
           stream.on("data", (data: Buffer) => {
@@ -67,6 +68,8 @@ export async function connectSSH(
         password: config.password,
         privateKey: config.privateKey,
         readyTimeout: 10000,
+        keepaliveInterval: 30000,
+        keepaliveCountMax: 3,
       });
   });
 }
@@ -117,6 +120,8 @@ export async function ensureAgentConnection(
         username: config.username,
         password: config.password,
         readyTimeout: 10000,
+        keepaliveInterval: 30000,
+        keepaliveCountMax: 3,
       });
   });
 }
@@ -135,7 +140,8 @@ export function removeAgentConnection(sessionId: string) {
 
 interface ExecStream {
   stream: any;
-  output: string;
+  /** Raw SSH output including ANSI escape sequences */
+  rawOutput: string;
   closed: boolean;
   exitCode: number | null;
   lastOutputTime: number;
@@ -172,7 +178,7 @@ export async function execCommand(sessionId: string, command: string): Promise<s
 
       const execStream: ExecStream = {
         stream,
-        output: '',
+        rawOutput: '',
         closed: false,
         exitCode: null,
         lastOutputTime: Date.now(),
@@ -184,7 +190,7 @@ export async function execCommand(sessionId: string, command: string): Promise<s
       const onData = (data: Buffer) => {
         const text = data.toString();
         debugLog(`exec data: streamId=${streamId} len=${text.length}`);
-        execStream.output += text;
+        execStream.rawOutput += text;
         execStream.lastOutputTime = Date.now();
 
         if (execStream.pendingResolves.length > 0) {
@@ -209,7 +215,7 @@ export async function execCommand(sessionId: string, command: string): Promise<s
       });
 
       stream.on('close', () => {
-        debugLog(`exec close: streamId=${streamId} exitCode=${execStream.exitCode} outputLen=${execStream.output.length}`);
+        debugLog(`exec close: streamId=${streamId} exitCode=${execStream.exitCode} outputLen=${execStream.rawOutput.length}`);
         execStream.closed = true;
         for (const res of execStream.pendingResolves) {
           res(null);
@@ -258,11 +264,11 @@ export function readNextChunk(streamId: string, timeoutMs: number): Promise<stri
   });
 }
 
-export function getExecStreamInfo(streamId: string): { output: string; closed: boolean; exitCode: number | null } | null {
+export function getExecStreamInfo(streamId: string): { rawOutput: string; closed: boolean; exitCode: number | null } | null {
   const execStream = execStreams.get(streamId);
   if (!execStream) return null;
   return {
-    output: execStream.output,
+    rawOutput: execStream.rawOutput,
     closed: execStream.closed,
     exitCode: execStream.exitCode,
   };

@@ -3,12 +3,11 @@ import { Server } from '../types'
 import { Monitor, Plus, Trash2, Terminal, Server as ServerIcon } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
-import { Select } from '../components/ui/select'
 
 export default function ServerList() {
   const [servers, setServers] = useState<Server[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', username: '', host: '', port: '22', terminal_type: 'bash' })
+  const [form, setForm] = useState({ name: '', username: '', host: '', port: '22' })
 
   useEffect(() => {
     fetch('/api/servers').then(r => r.json()).then(setServers).catch(console.error)
@@ -24,7 +23,7 @@ export default function ServerList() {
     const server = await res.json()
     setServers(prev => [server, ...prev])
     setShowForm(false)
-    setForm({ name: '', username: '', host: '', port: '22', terminal_type: 'bash' })
+    setForm({ name: '', username: '', host: '', port: '22' })
   }
 
   const handleDelete = async (id: number) => {
@@ -92,17 +91,6 @@ export default function ServerList() {
                   placeholder="22"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">默认终端</label>
-                <Select
-                  value={form.terminal_type}
-                  onChange={e => setForm(f => ({ ...f, terminal_type: e.target.value }))}
-                >
-                  <option value="bash">bash</option>
-                  <option value="zsh">zsh</option>
-                  <option value="sh">sh</option>
-                </Select>
-              </div>
               <div className="col-span-2 flex gap-3 justify-end">
                 <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>
                   取消
@@ -131,7 +119,7 @@ export default function ServerList() {
                   <div>
                     <h3 className="font-semibold text-white">{server.name || server.host}</h3>
                     <p className="text-sm text-gray-400">
-                      {server.username}@{server.host}:{server.port} · {server.terminal_type}
+                      {server.username}@{server.host}:{server.port}
                     </p>
                   </div>
                 </div>
