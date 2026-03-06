@@ -4,11 +4,13 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mcp-sqlite": "bun run src/mcp-sqlite.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.39",
     "@elysiajs/cors": "^1.2.2",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "ai": "^6.0.111",
     "elysia": "^1.2.25",
     "ssh2": "^1.16.0",
