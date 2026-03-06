@@ -10,8 +10,54 @@ import {
 } from "./terminal";
 import { checkAutoApproval, getServerById, getServerPassword } from "./db";
 import type { LanguageModel } from "ai";
+import path from "path";
+import { mkdirSync, writeFileSync, readFileSync } from "fs";
 
 const DEBUG_AGENT = process.env.DEBUG_AGENT === '1';
+
+// Directory to store full exec output when output is too long
+const execOutputDir = path.join(process.cwd(), 'exec-output');
+mkdirSync(execOutputDir, { recursive: true });
+
+const MAX_OUTPUT_LINES = 60;
+const CONTEXT_LINES = 20;
+
+/**
+ * If rawOutput exceeds MAX_OUTPUT_LINES, persist the full stripped content to
+ * a log file and return a truncated display string with first/last CONTEXT_LINES.
+ */
+function processLongOutput(rawOutput: string, outputId: string): {
+  displayOutput: string;
+  outputId: string | undefined;
+  totalLines: number;
+} {
+  const lines = rawOutput.split('\n');
+  if (lines.length <= MAX_OUTPUT_LINES) {
+    return { displayOutput: rawOutput, outputId: undefined, totalLines: lines.length };
+  }
+
+  // Save stripped output (no ANSI) to file for easy reading
+  const filePath = path.join(execOutputDir, `${outputId}.log`);
+  try {
+    writeFileSync(filePath, stripAnsi(rawOutput));
+  } catch (e) {
+    console.error('Failed to save exec output:', e);
+  }
+
+  const firstLines = lines.slice(0, CONTEXT_LINES);
+  const lastLines = lines.slice(-CONTEXT_LINES);
+  const omittedCount = lines.length - CONTEXT_LINES * 2;
+
+  const displayOutput = [
+    ...firstLines,
+    '',
+    `... [已省略 ${omittedCount} 行，完整内容已保存。可使用 read-output 工具（outputId="${outputId}"）查看完整内容] ...`,
+    '',
+    ...lastLines,
+  ].join('\n');
+
+  return { displayOutput, outputId, totalLines: lines.length };
+}
 
 /** Remove ANSI escape sequences so plain text can be sent to the AI model */
 const ansiEscapePattern = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g;
@@ -200,12 +246,16 @@ function createTools(ctx: AgentContext) {
             },
           });
 
+          const { displayOutput, outputId, totalLines } = processLongOutput(result.rawOutput, streamId);
+
           yield {
-            output: result.rawOutput,
+            output: displayOutput,
             closed: result.closed,
             exitCode: result.exitCode,
             streamId: result.streamId,
             command,
+            outputId,
+            totalLines,
           };
         } catch (e: unknown) {
           const error = e instanceof Error ? e.message : String(e);
@@ -367,6 +417,53 @@ function createTools(ctx: AgentContext) {
       },
     }),
 
+    "read-output": tool({
+      description: `读取命令执行的完整输出文件。当 exec 工具输出过长被截断时使用（exec 会返回 outputId）。
+支持两种模式：
+- 按行号范围读取：指定 startLine 和/或 endLine
+- 按关键词或正则搜索：指定 keyword 或 regex，返回所有匹配行及其行号`,
+      inputSchema: z.object({
+        outputId: z.string().describe("exec 工具返回的 outputId"),
+        startLine: z.number().optional().describe("起始行号（从 1 开始），不指定则从第 1 行开始"),
+        endLine: z.number().optional().describe("结束行号，不指定则读到最后一行"),
+        keyword: z.string().optional().describe("搜索关键词（大小写不敏感）"),
+        regex: z.string().optional().describe("搜索正则表达式"),
+      }),
+      async *execute({ outputId, startLine, endLine, keyword, regex }) {
+        const filePath = path.join(execOutputDir, `${outputId}.log`);
+        try {
+          const content = readFileSync(filePath, 'utf-8');
+          const lines = content.split('\n');
+          const totalLines = lines.length;
+
+          let result: Array<{ lineNum: number; line: string }>;
+
+          if (keyword || regex) {
+            let pattern: RegExp;
+            try {
+              pattern = regex ? new RegExp(regex) : new RegExp(keyword!, 'i');
+            } catch (e) {
+              yield { error: `正则表达式无效: ${e}`, totalLines };
+              return;
+            }
+            result = lines
+              .map((line, i) => ({ lineNum: i + 1, line }))
+              .filter(({ line }) => pattern.test(line));
+          } else {
+            const start = Math.max(1, startLine ?? 1);
+            const end = Math.min(totalLines, endLine ?? totalLines);
+            result = lines
+              .slice(start - 1, end)
+              .map((line, i) => ({ lineNum: start + i, line }));
+          }
+
+          yield { lines: result, totalLines, outputId };
+        } catch {
+          yield { error: `文件不存在或无法读取: exec-output/${outputId}.log`, outputId };
+        }
+      },
+    }),
+
     "close-stream": tool({
       description: "关闭一个打开的 exec 流。",
       inputSchema: z.object({
@@ -388,17 +485,20 @@ export function createTerminalAgent(model: LanguageModel, ctx: AgentContext) {
   - 对于可能需要输入的命令（如 sudo），设置 handleInput=true 和 promptRegex 来检测输入提示
   - 命令完成后会返回 output、closed、exitCode 和 streamId
   - 如果 streamId 存在（流未关闭），可以用后续工具继续操作
+  - 如果输出过长，会自动截断并返回 outputId，可用 read-output 工具查看完整内容
 
 - send-input: 向打开的流发送文本输入（不要用于密码）
 - wait-output: 继续等待流的输出
 - send-password: 发送服务器保存的密码到流中（密码不会出现在对话中）
 - request-user-input: 请求用户在界面中输入内容（如密码），内容不会暴露在 AI 上下文中
 - close-stream: 关闭流
+- read-output: 读取被截断的命令完整输出（按行号范围或关键词/正则搜索）
 
 工作流程示例：
 1. 普通命令：exec("ls -la") → 获取输出
-2. sudo 命令：exec("sudo apt update", handleInput=true, promptRegex="\\[sudo\\]|password") → 检测到密码提示 → send-password(streamId) → 获取输出
+2. sudo 命令（使用 -S 从 stdin 读取密码）：exec("sudo -S apt update", handleInput=true, promptRegex="\\[sudo\\]|password") → 检测到密码提示 → send-password(streamId) → 获取输出
 3. 需要用户输入密码：exec(...) → 检测到提示 → request-user-input(streamId, "请输入密码", isPassword=true)
+4. 输出过长：exec(...) 返回 outputId → read-output(outputId, keyword="error") 搜索错误信息
 
 在运行命令之前，请先解释你要做什么。`;
 
