@@ -47,6 +47,16 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS ai_models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_name VARCHAR NOT NULL,
+    provider VARCHAR NOT NULL,
+    capabilities TEXT NOT NULL DEFAULT '{}',
+    enabled VARCHAR(1) NOT NULL DEFAULT 'Y'
+  )
+`);
+
 export { db };
 
 export function getServers() {
@@ -195,4 +205,67 @@ export function checkAutoApproval(command: string, serverId?: number): boolean {
     }
   }
   return false;
+}
+
+// AI Model CRUD
+export interface AiModelCapabilities {
+  multimodal?: boolean;
+  deep_thinking?: boolean;
+  tool_calling?: boolean;
+  function_calling?: boolean;
+  [key: string]: boolean | undefined;
+}
+
+export interface AiModel {
+  id: number;
+  model_name: string;
+  provider: string;
+  capabilities: AiModelCapabilities;
+  enabled: 'Y' | 'N';
+}
+
+function parseAiModel(row: any): AiModel {
+  return {
+    ...row,
+    capabilities: typeof row.capabilities === 'string' ? JSON.parse(row.capabilities) : row.capabilities,
+  };
+}
+
+export function getAiModels(enabledOnly = false): AiModel[] {
+  const rows = enabledOnly
+    ? db.query("SELECT * FROM ai_models WHERE enabled = 'Y' ORDER BY id").all() as any[]
+    : db.query("SELECT * FROM ai_models ORDER BY id").all() as any[];
+  return rows.map(parseAiModel);
+}
+
+export function getAiModelById(id: number): AiModel | null {
+  const row = db.query("SELECT * FROM ai_models WHERE id = ?").get(id) as any;
+  return row ? parseAiModel(row) : null;
+}
+
+export function getAiModelByName(modelName: string): AiModel | null {
+  const row = db.query("SELECT * FROM ai_models WHERE model_name = ?").get(modelName) as any;
+  return row ? parseAiModel(row) : null;
+}
+
+export function createAiModel(data: { model_name: string; provider: string; capabilities?: AiModelCapabilities; enabled?: 'Y' | 'N' }): AiModel {
+  const capabilities = JSON.stringify(data.capabilities || {});
+  const enabled = data.enabled ?? 'Y';
+  const stmt = db.prepare("INSERT INTO ai_models (model_name, provider, capabilities, enabled) VALUES (?, ?, ?, ?)");
+  const result = stmt.run(data.model_name, data.provider, capabilities, enabled);
+  return { id: Number(result.lastInsertRowid), model_name: data.model_name, provider: data.provider, capabilities: data.capabilities || {}, enabled };
+}
+
+export function updateAiModel(id: number, data: { model_name?: string; provider?: string; capabilities?: AiModelCapabilities; enabled?: 'Y' | 'N' }): void {
+  const current = getAiModelById(id);
+  if (!current) return;
+  const model_name = data.model_name ?? current.model_name;
+  const provider = data.provider ?? current.provider;
+  const capabilities = JSON.stringify(data.capabilities ?? current.capabilities);
+  const enabled = data.enabled ?? current.enabled;
+  db.run("UPDATE ai_models SET model_name = ?, provider = ?, capabilities = ?, enabled = ? WHERE id = ?", [model_name, provider, capabilities, enabled, id]);
+}
+
+export function deleteAiModel(id: number): void {
+  db.run("DELETE FROM ai_models WHERE id = ?", [id]);
 }

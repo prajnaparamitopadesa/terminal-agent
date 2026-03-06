@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { generateText, createAgentUIStreamResponse, createIdGenerator } from "ai";
 import { createSession, connectSSH, sendInput, resizeTerminal, removeSession } from "./terminal";
-import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts } from "./db";
+import { getServers, getServerById, addServer, deleteServer, getAutoApprovals, addAutoApproval, updateAutoApproval, deleteAutoApproval, getServerPassword, updateServerPassword, getConversations, getConversation, createConversation, updateConversation, deleteConversation, getRecentPrompts, getAiModels, getAiModelById, createAiModel, updateAiModel, deleteAiModel } from "./db";
 import { createTerminalAgent, getPendingUserInputs, resolveUserInput } from "./agent";
 import dashscope from "./dashscope-model";
 
@@ -112,6 +112,43 @@ const app = new Elysia()
       server_id: query.server_id ? Number(query.server_id) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
     });
+  })
+  
+  // AI Models CRUD
+  .get("/api/ai-models", ({ query }) => {
+    const enabledOnly = query.enabled === 'true';
+    return getAiModels(enabledOnly);
+  })
+  .get("/api/ai-models/:id", ({ params }) => {
+    const model = getAiModelById(Number(params.id));
+    if (!model) return new Response("Not found", { status: 404 });
+    return model;
+  })
+  .post("/api/ai-models", ({ body }) => {
+    const { model_name, provider, capabilities, enabled } = body as any;
+    return createAiModel({ model_name, provider, capabilities, enabled });
+  }, {
+    body: t.Object({
+      model_name: t.String(),
+      provider: t.String(),
+      capabilities: t.Optional(t.Record(t.String(), t.Boolean())),
+      enabled: t.Optional(t.String()),
+    })
+  })
+  .put("/api/ai-models/:id", ({ params, body }) => {
+    updateAiModel(Number(params.id), body as any);
+    return { success: true };
+  }, {
+    body: t.Object({
+      model_name: t.Optional(t.String()),
+      provider: t.Optional(t.String()),
+      capabilities: t.Optional(t.Record(t.String(), t.Boolean())),
+      enabled: t.Optional(t.String()),
+    })
+  })
+  .delete("/api/ai-models/:id", ({ params }) => {
+    deleteAiModel(Number(params.id));
+    return { success: true };
   })
   
   // User input management (for request-user-input tool)
@@ -244,12 +281,22 @@ Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
   // Agent chat endpoint
   .post("/api/agent/:sessionId/chat", async ({ params, body }) => {
     const { sessionId } = params;
-    const { messages, serverId } = body as {
+    const { messages, serverId, modelId } = body as {
       messages: any[];
       serverId?: number;
+      modelId?: number;
     };
 
-    const model = dashscope(process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus");
+    // Resolve model: use DB model if modelId provided, else fall back to env config
+    let modelName = process.env.DASHSCOPE_CHAT_MODEL || "qwen-plus";
+    if (modelId) {
+      const dbModel = getAiModelById(modelId);
+      if (dbModel && dbModel.enabled === 'Y') {
+        modelName = dbModel.model_name;
+      }
+    }
+
+    const model = dashscope(modelName);
     const agent = createTerminalAgent(model, {
       sessionId,
       serverId: serverId || 0,
@@ -264,6 +311,7 @@ Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
     body: t.Object({
       messages: t.Array(t.Any()),
       serverId: t.Optional(t.Number()),
+      modelId: t.Optional(t.Number()),
     })
   })
   

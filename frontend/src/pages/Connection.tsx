@@ -2,14 +2,20 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
-import { ArrowLeft, Send, Terminal as TerminalIcon, MessageSquare, Shield, Plus, GitFork, History } from 'lucide-react'
+import { ArrowLeft, Terminal as TerminalIcon, MessageSquare, Shield, Plus, GitFork, History, ChevronDown } from 'lucide-react'
 import TerminalPanel from '../components/TerminalPanel'
 import ChatMessage from '../components/ChatMessage'
 import AutoApprovalManager from '../components/AutoApprovalManager'
 import HistoryPanel from '../components/HistoryPanel'
-import { Server, Conversation } from '../types'
+import { Server, Conversation, AiModel } from '../types'
 import { Button } from '../components/ui/button'
-import { Textarea } from '../components/ui/textarea'
+import { PromptInput } from '../components/ai-elements/prompt-input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu'
 
 export default function Connection() {
   const { serverId } = useParams()
@@ -26,6 +32,8 @@ export default function Connection() {
   const [promptHistory, setPromptHistory] = useState<string[]>([])
   const [promptHistoryIndex, setPromptHistoryIndex] = useState(-1)
   const [savedInput, setSavedInput] = useState('')
+  const [aiModels, setAiModels] = useState<AiModel[]>([])
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const agentWsRef = useRef<WebSocket | null>(null)
@@ -48,6 +56,17 @@ export default function Connection() {
     return () => { document.title = 'Terminal Agent' }
   }, [server])
   
+  // Fetch available AI models
+  useEffect(() => {
+    fetch('/api/ai-models?enabled=true')
+      .then(r => r.json())
+      .then((models: AiModel[]) => {
+        setAiModels(models)
+        setSelectedModelId(prev => (prev === null && models.length > 0) ? models[0].id : prev)
+      })
+      .catch(console.error)
+  }, [])
+  
   // Agent WebSocket for user input requests
   useEffect(() => {
     const ws = new WebSocket(`ws://${window.location.host}/ws/agent/${sessionId}`)
@@ -66,7 +85,7 @@ export default function Connection() {
   const { messages, sendMessage, status, setMessages, addToolApprovalResponse } = useChat({
     transport: new DefaultChatTransport({
       api: `/api/agent/${sessionId}/chat`,
-      body: { serverId: Number(serverId) },
+      body: { serverId: Number(serverId), modelId: selectedModelId || undefined },
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     onFinish: () => {
@@ -119,8 +138,7 @@ export default function Connection() {
 
   const isLoading = status === 'submitted' || status === 'streaming'
   
-  const handleChatSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleChatSubmit = () => {
     if (!input.trim()) return
     
     // Add to prompt history
@@ -188,13 +206,6 @@ export default function Connection() {
   }
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Submit on Enter (without Shift)
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleChatSubmit(e)
-      return
-    }
-
     if (promptHistory.length === 0) return
 
     const textarea = e.currentTarget
@@ -351,6 +362,30 @@ export default function Connection() {
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-blue-400" />
               <span className="font-medium text-sm">AI 助手</span>
+              {aiModels.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-gray-400 hover:text-gray-200 gap-1">
+                      {aiModels.find(m => m.id === selectedModelId)?.model_name || '选择模型'}
+                      <ChevronDown className="w-3 h-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    {aiModels.map(model => (
+                      <DropdownMenuItem
+                        key={model.id}
+                        onSelect={() => setSelectedModelId(model.id)}
+                        className={selectedModelId === model.id ? 'text-blue-400' : ''}
+                      >
+                        <div>
+                          <div className="text-xs font-medium">{model.model_name}</div>
+                          <div className="text-xs text-gray-500">{model.provider}</div>
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -413,34 +448,17 @@ export default function Connection() {
             </div>
           
             {/* Chat input */}
-            <form onSubmit={handleChatSubmit} className="p-4 border-t border-gray-700">
-              <div className="flex gap-2 items-end">
-                <Textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleInputKeyDown}
-                  placeholder="向 AI 助手发送消息..."
-                  disabled={isLoading}
-                  rows={1}
-                  className="flex-1 max-h-32 overflow-y-auto"
-                  style={{ minHeight: '38px' }}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement
-                    target.style.height = 'auto'
-                    target.style.height = Math.min(target.scrollHeight, 128) + 'px'
-                  }}
-                />
-                <Button
-                  type="submit"
-                  disabled={isLoading || !input.trim()}
-                  size="sm"
-                  className="flex-shrink-0 h-[38px]"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </form>
+            <div className="p-3 border-t border-gray-700">
+              <PromptInput
+                ref={textareaRef}
+                value={input}
+                onChange={setInput}
+                onSubmit={handleChatSubmit}
+                disabled={isLoading}
+                placeholder="向 AI 助手发送消息..."
+                onKeyDown={handleInputKeyDown}
+              />
+            </div>
             </>
             )}
           </div>
