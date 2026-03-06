@@ -110,5 +110,5 @@ console.log(`   Executable: ${exePath}`);
 console.log('');
 console.log('📋 Distribution notes:');
 console.log('   • Run terminal-agent.exe — no additional files required');
-console.log('   • On first run, model-provider.json is auto-created from the built-in template');
+console.log('   • On first run, providers and models are auto-seeded from built-in examples');
 console.log('   • The SQLite database is auto-created in the same directory');
