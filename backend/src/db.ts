@@ -282,3 +282,22 @@ export function updateAiModel(id: number, data: { model_name?: string; display_n
 export function deleteAiModel(id: number): void {
   db.run("DELETE FROM ai_models WHERE id = ?", [id]);
 }
+
+export function seedModelsFromJson(jsonContent: string): void {
+  const count = db.query("SELECT COUNT(*) as n FROM ai_models").get() as { n: number };
+  if (count?.n > 0) return; // Only seed if empty
+
+  const data = JSON.parse(jsonContent);
+  const providers: Array<{ name: string; label?: string; models?: any[] }> = data.providers || [];
+  for (const provider of providers) {
+    for (const model of provider.models || []) {
+      createAiModel({
+        model_name: model.model_name,
+        display_name: model.display_name,
+        provider: provider.name,
+        capabilities: model.capabilities || {},
+        enabled: model.enabled ?? 'Y',
+      });
+    }
+  }
+}

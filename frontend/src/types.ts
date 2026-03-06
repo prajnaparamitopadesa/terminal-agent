@@ -44,3 +44,10 @@ export interface AiModel {
   capabilities: AiModelCapabilities
   enabled: 'Y' | 'N'
 }
+
+export interface ModelProvider {
+  name: string
+  label?: string
+  base_url: string
+  api_key: string
+}
