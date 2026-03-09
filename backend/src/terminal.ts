@@ -158,6 +158,74 @@ function debugLog(...args: unknown[]) {
   if (DEBUG_EXEC) console.log('[DEBUG_AGENT]', ...args);
 }
 
+/**
+ * Open a PTY-enabled exec channel and send the raw command directly (no wrapping).
+ * Use this for interactive commands that require a pseudo-terminal (e.g. sudo, ssh).
+ * Unlike execCommand, stderr is merged into stdout by the PTY so no separate
+ * stderr consumer is needed.
+ */
+export async function execCommandStream(sessionId: string, command: string): Promise<string> {
+  const client = agentClients.get(sessionId);
+  if (!client) throw new Error("Agent not connected");
+
+  const streamId = `exec_stream_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  debugLog(`execCommandStream start: streamId=${streamId} command=${command}`);
+
+  return new Promise((resolve, reject) => {
+    client.exec(command, { pty: { cols: 220, rows: 50, term: 'xterm-256color' } }, (err: Error | undefined, stream: any) => {
+      if (err) {
+        debugLog(`execCommandStream error: streamId=${streamId}`, err.message);
+        return reject(err);
+      }
+
+      const execStream: ExecStream = {
+        stream,
+        rawOutput: '',
+        closed: false,
+        exitCode: null,
+        lastOutputTime: Date.now(),
+        pendingResolves: [],
+        buffer: [],
+        sessionId,
+      };
+
+      const onData = (data: Buffer) => {
+        const text = data.toString();
+        debugLog(`exec-stream data: streamId=${streamId} len=${text.length}`);
+        execStream.rawOutput += text;
+        execStream.lastOutputTime = Date.now();
+
+        if (execStream.pendingResolves.length > 0) {
+          const res = execStream.pendingResolves.shift()!;
+          res(text);
+        } else {
+          execStream.buffer.push(text);
+        }
+      };
+
+      // PTY merges stderr into stdout; no separate stderr stream to consume
+      stream.on('data', onData);
+
+      stream.on('exit', (code: number | null, signal?: string) => {
+        debugLog(`exec-stream exit: streamId=${streamId} code=${code} signal=${signal}`);
+        execStream.exitCode = code ?? (signal ? -1 : 0);
+      });
+
+      stream.on('close', () => {
+        debugLog(`exec-stream close: streamId=${streamId} exitCode=${execStream.exitCode} outputLen=${execStream.rawOutput.length}`);
+        execStream.closed = true;
+        for (const res of execStream.pendingResolves) {
+          res(null);
+        }
+        execStream.pendingResolves = [];
+      });
+
+      execStreams.set(streamId, execStream);
+      resolve(streamId);
+    });
+  });
+}
+
 export async function execCommand(sessionId: string, command: string): Promise<string> {
   const client = agentClients.get(sessionId);
   if (!client) throw new Error("Agent not connected");

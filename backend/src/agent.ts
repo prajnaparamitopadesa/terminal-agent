@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ensureAgentConnection,
   execCommand,
+  execCommandStream,
   readNextChunk,
   getExecStreamInfo,
   sendExecInput,
@@ -238,16 +239,72 @@ function formatLinesCompact(allLines: string[], lineNums: number[]): string {
 function createTools(ctx: AgentContext) {
   return {
     "exec": tool({
-      description: `执行命令并获取输出。通过独立的 SSH exec 通道运行命令。
+      description: `执行命令并获取完整输出。通过独立的 SSH exec 通道运行命令，等待命令结束后返回结果。
+仅用于不需要交互输入的命令。如需交互输入，请使用 exec-stream。
+
 参数说明：
 - command: 要执行的命令
 - timeout: 总超时时间（毫秒），默认 30000
-- handleInput: 是否预期命令需要交互输入（如密码提示等）
+
+返回结果包含：
+- output: 命令输出内容（过长时自动截断，并返回 outputId 供 read-output 使用）
+- exitCode: 退出码`,
+      inputSchema: z.object({
+        command: z.string().describe("要执行的命令"),
+        timeout: z.number().optional().describe("总超时时间（毫秒），默认 30000"),
+      }),
+      needsApproval: (input: { command: string }) => {
+        return !checkAutoApproval(input.command, ctx.serverId);
+      },
+      toModelOutput: ({ output }) => toModelOutputStrippedAnsi(output),
+      async *execute({ command, timeout = 30000 }) {
+        yield { output: '', exitCode: null as number | null, command };
+
+        try {
+          // Ensure agent SSH connection
+          const server = getServerById(ctx.serverId);
+          if (!server) throw new Error("Server not found");
+          const password = getServerPassword(ctx.serverId);
+          await ensureAgentConnection(ctx.sessionId, {
+            host: server.host,
+            port: server.port || 22,
+            username: server.username,
+            password: password || undefined,
+          });
+
+          const streamId = await execCommand(ctx.sessionId, command);
+
+          const result = await collectExecOutput(streamId, { timeout });
+
+          const { displayOutput, outputId, totalLines } = processLongOutput(result.rawOutput, streamId);
+
+          yield {
+            output: displayOutput,
+            exitCode: result.exitCode,
+            command,
+            outputId,
+            totalLines,
+          };
+        } catch (e: unknown) {
+          const error = e instanceof Error ? e.message : String(e);
+          yield { output: `Error: ${error}`, exitCode: -1, command };
+        }
+      },
+    }),
+
+    "exec-stream": tool({
+      description: `执行命令并以流式方式获取输出，用于需要交互输入的命令（如 sudo、ssh、交互式程序等）。
+通过独立的 SSH exec 通道运行命令，返回流 ID 供后续 send-input/send-password/wait-output/close-stream 使用。
+
+参数说明：
+- command: 要执行的命令
+- timeout: 总超时时间（毫秒），默认 30000
+- handleInput: 是否预期命令需要交互输入（如密码提示等），设为 true 时遇到输入提示后立即返回
 - promptTimeout: 当 handleInput=true 时，流空闲多久后认为出现了输入提示（毫秒），默认 3000
 - promptRegex: 当 handleInput=true 时，用于检测输入提示的正则表达式
 
 返回结果包含：
-- output: 命令输出内容
+- output: 当前已输出的内容
 - closed: 流是否已关闭
 - exitCode: 退出码（仅在 closed=true 时有效）
 - streamId: 流ID（仅在 closed=false 时返回，可用于后续 send-input/wait-output/close-stream 操作）`,
@@ -277,28 +334,21 @@ function createTools(ctx: AgentContext) {
             password: password || undefined,
           });
 
-          const streamId = await execCommand(ctx.sessionId, command);
+          const streamId = await execCommandStream(ctx.sessionId, command);
 
           const result = await collectExecOutput(streamId, {
             timeout,
             handleInput,
             promptTimeout,
             promptRegex,
-            onChunk: (_totalRawOutput) => {
-              // Note: Can't yield from callback; streaming is handled by polling in collectExecOutput
-            },
           });
 
-          const { displayOutput, outputId, totalLines } = processLongOutput(result.rawOutput, streamId);
-
           yield {
-            output: displayOutput,
+            output: result.rawOutput,
             closed: result.closed,
             exitCode: result.exitCode,
             streamId: result.streamId,
             command,
-            outputId,
-            totalLines,
           };
         } catch (e: unknown) {
           const error = e instanceof Error ? e.message : String(e);
@@ -540,11 +590,14 @@ export function createTerminalAgent(model: LanguageModel, ctx: AgentContext) {
   const instructions = `你是一个服务器诊断 agent。你帮助用户通过终端命令诊断和修复服务器问题。
 
 你可以使用以下工具：
-- exec: 执行命令。所有命令在执行前需要用户审批（由工具自动处理）。
-  - 对于可能需要输入的命令（如 sudo），设置 handleInput=true 和 promptRegex 来检测输入提示
-  - 命令完成后会返回 output、closed、exitCode 和 streamId
-  - 如果 streamId 存在（流未关闭），可以用后续工具继续操作
+- exec: 执行简单命令并获取完整输出。等待命令结束后返回 output 和 exitCode。
+  - 仅用于不需要交互输入的命令
   - 如果输出过长，会自动截断并返回 outputId，可用 read-output 工具查看完整内容
+
+- exec-stream: 执行需要交互输入的命令（如 sudo、ssh、交互式程序等）。
+  - 设置 handleInput=true 和 promptRegex 来检测输入提示
+  - 命令开始后会返回 output、closed、exitCode 和 streamId
+  - 如果 streamId 存在（流未关闭），可以用后续工具继续操作
 
 - send-input: 向打开的流发送文本输入（不要用于密码）
 - wait-output: 继续等待流的输出
@@ -554,9 +607,9 @@ export function createTerminalAgent(model: LanguageModel, ctx: AgentContext) {
 - read-output: 读取被截断的命令完整输出（按行号范围或关键词/正则搜索）
 
 工作流程示例：
-1. 普通命令：exec("ls -la") → 获取输出
-2. sudo 命令（使用 -S 从 stdin 读取密码）：exec("sudo -S apt update", handleInput=true, promptRegex="\\[sudo\\]|password") → 检测到密码提示 → send-password(streamId) → 获取输出
-3. 需要用户输入密码：exec(...) → 检测到提示 → request-user-input(streamId, "请输入密码", isPassword=true)
+1. 普通命令：exec("ls -la") → 获取输出和 exitCode
+2. sudo 命令（使用 -S 从 stdin 读取密码）：exec-stream("sudo -S apt update", handleInput=true, promptRegex="\\[sudo\\]|password") → 检测到密码提示 → send-password(streamId) → 获取输出
+3. 需要用户输入密码：exec-stream(...) → 检测到提示 → request-user-input(streamId, "请输入密码", isPassword=true)
 4. 输出过长：exec(...) 返回 outputId → read-output(outputId, keyword="error") 搜索错误信息
 
 在运行命令之前，请先解释你要做什么。`;
