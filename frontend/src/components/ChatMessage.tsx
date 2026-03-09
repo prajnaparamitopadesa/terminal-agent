@@ -288,8 +288,8 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
       )
     }
 
-    // Special rendering for exec tool
-    if (name === 'exec') {
+    // Special rendering for exec and exec-stream tools
+    if (name === 'exec' || name === 'exec-stream') {
       const command = (args as any)?.command || ''
       const output = (result as any)?.output || ''
       const exitCode = (result as any)?.exitCode
