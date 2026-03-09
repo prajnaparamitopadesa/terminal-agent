@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ensureAgentConnection,
   execCommand,
+  execCommandStream,
   readNextChunk,
   getExecStreamInfo,
   sendExecInput,
@@ -333,7 +334,7 @@ function createTools(ctx: AgentContext) {
             password: password || undefined,
           });
 
-          const streamId = await execCommand(ctx.sessionId, command);
+          const streamId = await execCommandStream(ctx.sessionId, command);
 
           const result = await collectExecOutput(streamId, {
             timeout,
