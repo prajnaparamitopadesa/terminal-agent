@@ -57,6 +57,9 @@ bun run build:exe
 
 目前的bun版本(1.3.10)下未压缩体积约一百一十多 MB，压缩后约二十几 MB。
 
+如果要通过 GitHub Actions 自动打包并发布到 Release，可以手动运行仓库里的
+`Build Windows EXE` 工作流，并在触发时输入版本号（支持 `1.0.1` 或 `v1.0.1`）。
+
 ## 3. 这项目的成本
 
 1. 使用 GitHub Copilot、Claude Sonnet 4.6，共计约 24 次 agent 调用，部分 agent 有多轮对话，合计大约花掉了月额度的 15%(算上写这篇文章)。

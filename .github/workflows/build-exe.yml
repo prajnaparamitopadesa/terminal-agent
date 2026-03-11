@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (for example: 1.0.1 or v1.0.1)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -41,16 +46,43 @@ jobs:
       - name: Build Windows EXE
         run: bun run build:exe
 
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            if [ -z "$version" ]; then
+              echo "Version input is required for manual releases" >&2
+              exit 1
+            fi
+          else
+            version="${GITHUB_REF_NAME}"
+          fi
+
+          case "$version" in
+            v*) tag="$version" ;;
+            *) tag="v$version" ;;
+          esac
+
+          asset_name="terminal-agent-${tag}-windows-x64.exe"
+          cp dist/terminal-agent.exe "dist/${asset_name}"
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: terminal-agent-windows
-          path: dist/terminal-agent.exe
+          name: terminal-agent-${{ steps.release.outputs.tag }}-windows
+          path: dist/${{ steps.release.outputs.asset_name }}
           retention-days: 30
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/terminal-agent.exe
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: dist/${{ steps.release.outputs.asset_name }}
           generate_release_notes: true
