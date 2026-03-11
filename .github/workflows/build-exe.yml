@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (for example: 1.0.1 or v1.0.1)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -41,16 +46,58 @@ jobs:
       - name: Build Windows EXE
         run: bun run build:exe
 
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME}"
+          fi
+
+          case "$version" in
+            v*) tag="$version" ;;
+            *) tag="v$version" ;;
+          esac
+
+          asset_name="terminal-agent-${tag}-windows-x64.exe"
+          cp dist/terminal-agent.exe "dist/${asset_name}"
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag for manual release
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${{ steps.release.outputs.tag }}`,
+                sha: context.sha,
+              });
+            } catch (error) {
+              if (error.status !== 422) {
+                throw error;
+              }
+              console.log(`Tag ${{ steps.release.outputs.tag }} already exists; reusing it for the release.`);
+            }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: terminal-agent-windows
-          path: dist/terminal-agent.exe
+          path: dist/${{ steps.release.outputs.asset_name }}
           retention-days: 30
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/terminal-agent.exe
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.tag }}
+          files: dist/${{ steps.release.outputs.asset_name }}
           generate_release_notes: true
