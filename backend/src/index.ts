@@ -516,13 +516,13 @@ Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
     return new Response('Not Found', { status: 404 });
   })
   
-  .listen(3101);
+  .listen(3100);
 
-console.log("Backend running on http://localhost:3101");
+console.log("Backend running on http://localhost:3100");
 
 // Auto-open browser when running as compiled exe (embedded assets are present)
 if (embeddedAssets) {
-  const url = "http://localhost:3101";
+  const url = "http://localhost:3100";
   try {
     const platform = process.platform;
     if (platform === 'win32') {
