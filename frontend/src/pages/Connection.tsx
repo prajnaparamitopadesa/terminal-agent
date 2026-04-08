@@ -19,7 +19,7 @@ import {
 
 const MODEL_STORAGE_KEY = 'selected_ai_model_id'
 const MAX_AGENT_EVENTS = 50
-const INTERRUPTED_REASON = '因未知原因中断'
+const INTERRUPTED_REASON = '由未知原因中断'
 
 interface AgentEvent {
   id: string

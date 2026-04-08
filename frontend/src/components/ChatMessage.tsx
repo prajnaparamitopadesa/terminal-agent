@@ -306,12 +306,12 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
       const exitCode = (result as any)?.exitCode
       const closed = (result as any)?.closed
       const streamId = (result as any)?.streamId
-      return (
-        <ExecResult
-          key={key}
-          command={command}
-          output={output}
-          state={state}
+        return (
+          <ExecResult
+            key={key}
+            command={command}
+            output={output}
+            state={state}
             exitCode={exitCode}
             closed={closed}
             streamId={streamId}
@@ -319,8 +319,8 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
             preliminary={preliminary}
             sessionId={sessionId}
             serverId={serverId}
-          onAddSessionApproval={onAddSessionApproval}
-        />
+            onAddSessionApproval={onAddSessionApproval}
+          />
       )
     }
 
