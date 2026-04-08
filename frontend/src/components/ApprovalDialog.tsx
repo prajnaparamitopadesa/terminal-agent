@@ -79,7 +79,7 @@ export default function ApprovalDialog({ command, serverId, onClose, suggestedPa
         }),
       })
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
+        throw new Error(`保存自动审批规则失败：HTTP ${res.status}`)
       }
       onClose()
     } catch (err) {

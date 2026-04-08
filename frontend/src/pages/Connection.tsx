@@ -163,7 +163,7 @@ export default function Connection() {
     if (!server && serverId) {
       fetch(`/api/servers/${serverId}`)
         .then(r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`)
+          if (!r.ok) throw new Error(`加载服务器信息失败：HTTP ${r.status}`)
           return r.json()
         })
         .then(setServer)
@@ -183,7 +183,7 @@ export default function Connection() {
   useEffect(() => {
     fetch('/api/ai-models?enabled=true')
       .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        if (!r.ok) throw new Error(`加载模型列表失败：HTTP ${r.status}`)
         return r.json()
       })
       .then((models: AiModel[]) => {
@@ -290,7 +290,7 @@ export default function Connection() {
           body: JSON.stringify({ server_id: serverIdNumber, title: titleLine, messages: messagesJson }),
         })
           .then(r => {
-            if (!r.ok) throw new Error(`HTTP ${r.status}`)
+            if (!r.ok) throw new Error(`创建对话失败：HTTP ${r.status}`)
             return r.json()
           })
           .then(data => setConversationId(data.id))
@@ -394,7 +394,7 @@ export default function Connection() {
   const handleSelectConversation = async (conv: Conversation) => {
     try {
       const res = await fetch(`/api/conversations/${conv.id}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) throw new Error(`加载对话失败：HTTP ${res.status}`)
       const data = await res.json()
       const msgs = JSON.parse(data.messages || '[]') as UIMessage[]
       const normalized = normalizeInterruptedApprovalMessages(msgs)
@@ -691,7 +691,7 @@ export default function Connection() {
                   ref={textareaRef}
                   value={input}
                   onChange={setInput}
-                  onSubmit={() => { handleChatSubmit() }}
+                  onSubmit={handleChatSubmit}
                   disabled={!canReplaceApprovalWithMessage}
                   placeholder="向 AI 助手发送消息..."
                   onKeyDown={handleInputKeyDown}
@@ -713,7 +713,7 @@ export default function Connection() {
                       disabled={!input.trim()}
                       size="iconSm"
                       className="flex-shrink-0 mb-0.5"
-                      onClick={() => { handleChatSubmit() }}
+                      onClick={handleChatSubmit}
                     >
                       <Send className="w-3.5 h-3.5" />
                     </Button>
