@@ -19,7 +19,7 @@ import {
 
 const MODEL_STORAGE_KEY = 'selected_ai_model_id'
 const MAX_AGENT_EVENTS = 50
-const INTERRUPTED_REASON = '未知原因的中断'
+const INTERRUPTED_REASON = '因未知原因中断'
 
 interface AgentEvent {
   id: string
@@ -691,7 +691,7 @@ export default function Connection() {
                   ref={textareaRef}
                   value={input}
                   onChange={setInput}
-                  onSubmit={() => { void handleChatSubmit() }}
+                  onSubmit={() => { handleChatSubmit() }}
                   disabled={!canReplaceApprovalWithMessage}
                   placeholder="向 AI 助手发送消息..."
                   onKeyDown={handleInputKeyDown}
@@ -713,7 +713,7 @@ export default function Connection() {
                       disabled={!input.trim()}
                       size="iconSm"
                       className="flex-shrink-0 mb-0.5"
-                      onClick={() => { void handleChatSubmit() }}
+                      onClick={() => { handleChatSubmit() }}
                     >
                       <Send className="w-3.5 h-3.5" />
                     </Button>
