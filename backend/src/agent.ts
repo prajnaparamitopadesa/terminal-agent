@@ -244,6 +244,7 @@ function createTools(ctx: AgentContext) {
 
 参数说明：
 - command: 要执行的命令
+- commandRegex: 可选。用于后续配置类似命令自动审批的正则表达式
 - timeout: 总超时时间（毫秒），默认 30000
 
 返回结果包含：
@@ -251,6 +252,7 @@ function createTools(ctx: AgentContext) {
 - exitCode: 退出码`,
       inputSchema: z.object({
         command: z.string().describe("要执行的命令"),
+        commandRegex: z.string().optional().describe("可选。用于后续配置类似命令自动审批的正则表达式"),
         timeout: z.number().optional().describe("总超时时间（毫秒），默认 30000"),
       }),
       needsApproval: (input: { command: string }) => {
@@ -298,6 +300,7 @@ function createTools(ctx: AgentContext) {
 
 参数说明：
 - command: 要执行的命令
+- commandRegex: 可选。用于后续配置类似命令自动审批的正则表达式
 - timeout: 总超时时间（毫秒），默认 30000
 - handleInput: 是否预期命令需要交互输入（如密码提示等），设为 true 时遇到输入提示后立即返回
 - promptTimeout: 当 handleInput=true 时，流空闲多久后认为出现了输入提示（毫秒），默认 3000
@@ -310,6 +313,7 @@ function createTools(ctx: AgentContext) {
 - streamId: 流ID（仅在 closed=false 时返回，可用于后续 send-input/wait-output/close-stream 操作）`,
       inputSchema: z.object({
         command: z.string().describe("要执行的命令"),
+        commandRegex: z.string().optional().describe("可选。用于后续配置类似命令自动审批的正则表达式"),
         timeout: z.number().optional().describe("总超时时间（毫秒），默认 30000"),
         handleInput: z.boolean().optional().describe("是否预期命令需要交互输入"),
         promptTimeout: z.number().optional().describe("流空闲多久后判定为输入提示（毫秒），默认 3000"),

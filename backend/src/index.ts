@@ -294,13 +294,14 @@ const app = new Elysia()
   
   // Convert to regex using AI
   .post("/api/convert-to-regex", async ({ body }) => {
-    const { command, requirement, history } = body as {
-      command: string;
-      requirement?: string;
-      history?: Array<{ requirement: string; regex: string }>;
-    };
+    try {
+      const { command, requirement, history } = body as {
+        command: string;
+        requirement?: string;
+        history?: Array<{ requirement: string; regex: string }>;
+      };
 
-    const systemMessage = `You are a shell command pattern analyzer. Convert a specific shell command into a regex pattern that matches the command's STRUCTURE — the command name and the types of arguments — without including actual argument values.
+      const systemMessage = `You are a shell command pattern analyzer. Convert a specific shell command into a regex pattern that matches the command's STRUCTURE — the command name and the types of arguments — without including actual argument values.
 
 Rules:
 - Keep the command name literal (e.g., ls, grep, docker, ssh)
@@ -322,35 +323,43 @@ User: Command: ssh -i /home/user/.ssh/id_rsa user@192.168.1.1
 Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
 
     // Build conversation-style messages array
-    type Message = { role: "system" | "user" | "assistant"; content: string };
-    const messages: Message[] = [{ role: "system", content: systemMessage }];
+      type Message = { role: "system" | "user" | "assistant"; content: string };
+      const messages: Message[] = [{ role: "system", content: systemMessage }];
 
     // Add history as conversation turns (user requirement → rejected regex)
-    if (history && history.length > 0) {
-      for (const h of history) {
-        // Escape newlines to prevent prompt injection
-        const req = h.requirement.replace(/\n/g, ' ').slice(0, 200);
-        const rx = h.regex.replace(/\n/g, ' ').slice(0, 200);
-        const userContent = req
-          ? `Command: ${command.replace(/\n/g, ' ')}\nRequirement: ${req}`
-          : `Command: ${command.replace(/\n/g, ' ')}`;
-        messages.push({ role: "user", content: userContent });
-        messages.push({ role: "assistant", content: rx });
+      if (history && history.length > 0) {
+        for (const h of history) {
+          // Escape newlines to prevent prompt injection
+          const req = h.requirement.replace(/\n/g, ' ').slice(0, 200);
+          const rx = h.regex.replace(/\n/g, ' ').slice(0, 200);
+          const userContent = req
+            ? `Command: ${command.replace(/\n/g, ' ')}\nRequirement: ${req}`
+            : `Command: ${command.replace(/\n/g, ' ')}`;
+          messages.push({ role: "user", content: userContent });
+          messages.push({ role: "assistant", content: rx });
+        }
       }
+
+      // Add current request
+      const currentContent = requirement?.trim()
+        ? `Command: ${command.replace(/\n/g, ' ')}\nRequirement: ${requirement.trim().replace(/\n/g, ' ').slice(0, 200)}`
+        : `Command: ${command.replace(/\n/g, ' ')}`;
+      messages.push({ role: "user", content: currentContent });
+
+      const result = await generateText({
+        model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"),
+        messages,
+        maxOutputTokens: 200,
+      });
+      return { regex: result.text.trim() };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[convert-to-regex] failed:', message);
+      return new Response(JSON.stringify({ error: '正则生成失败，请稍后重试' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
-
-    // Add current request
-    const currentContent = requirement?.trim()
-      ? `Command: ${command.replace(/\n/g, ' ')}\nRequirement: ${requirement.trim().replace(/\n/g, ' ').slice(0, 200)}`
-      : `Command: ${command.replace(/\n/g, ' ')}`;
-    messages.push({ role: "user", content: currentContent });
-
-    const result = await generateText({
-      model: dashscope(process.env.DASHSCOPE_LITE_MODEL || "qwen-turbo"),
-      messages,
-      maxOutputTokens: 200,
-    });
-    return { regex: result.text.trim() };
   })
   
   // Terminal WebSocket

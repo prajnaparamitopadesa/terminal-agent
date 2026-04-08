@@ -15,6 +15,8 @@ interface Props {
   command: string
   serverId: number
   onClose: () => void
+  suggestedPattern?: string
+  suggestedIsRegex?: boolean
 }
 
 interface ConvTurn {
@@ -22,17 +24,19 @@ interface ConvTurn {
   regex: string
 }
 
-export default function ApprovalDialog({ command, serverId, onClose }: Props) {
-  const [pattern, setPattern] = useState(command)
-  const [isRegex, setIsRegex] = useState(false)
+export default function ApprovalDialog({ command, serverId, onClose, suggestedPattern, suggestedIsRegex = false }: Props) {
+  const [pattern, setPattern] = useState(suggestedPattern || command)
+  const [isRegex, setIsRegex] = useState(!!suggestedPattern && suggestedIsRegex)
   const [requirement, setRequirement] = useState('')
   const [scope, setScope] = useState<'global' | 'server'>('global')
   const [converting, setConverting] = useState(false)
+  const [error, setError] = useState('')
   // Multi-turn conversation history: each entry is a rejected attempt (user requirement + AI regex)
   const [history, setHistory] = useState<ConvTurn[]>([])
 
   const convertToRegex = async () => {
     setConverting(true)
+    setError('')
     try {
       const res = await fetch('/api/convert-to-regex', {
         method: 'POST',
@@ -43,6 +47,10 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
           history: history.length > 0 ? history : undefined,
         }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
       const data = await res.json()
       if (data.regex) {
         // Record this attempt in history so next call can use it as a rejected example
@@ -50,23 +58,33 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
         setPattern(data.regex)
         setIsRegex(true)
       }
-    } catch {}
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '正则生成失败')
+    }
     setConverting(false)
   }
 
   const handleSave = async () => {
-    await fetch('/api/auto-approvals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pattern,
-        is_regex: isRegex,
-        description: requirement || `Pattern for: ${command}`,
-        scope,
-        server_id: scope === 'server' ? serverId : undefined,
-      }),
-    })
-    onClose()
+    setError('')
+    try {
+      const res = await fetch('/api/auto-approvals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pattern,
+          is_regex: isRegex,
+          description: requirement || `Pattern for: ${command}`,
+          scope,
+          server_id: scope === 'server' ? serverId : undefined,
+        }),
+      })
+      if (!res.ok) {
+        throw new Error(`保存自动审批规则失败：HTTP ${res.status}`)
+      }
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存自动审批规则失败')
+    }
   }
 
   return (
@@ -90,6 +108,9 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
             onChange={e => setPattern(e.target.value)}
             className="font-mono"
           />
+          {suggestedPattern && (
+            <p className="mt-2 text-xs text-blue-300">已自动填入工具提供的正则建议，可按需修改。</p>
+          )}
           <label className="flex items-center gap-2 mt-2 cursor-pointer">
             <input
               type="checkbox"
@@ -133,6 +154,12 @@ export default function ApprovalDialog({ command, serverId, onClose }: Props) {
             <option value="server">仅此服务器</option>
           </Select>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-700 bg-red-950/60 px-3 py-2 text-sm text-red-200">
+            {error}
+          </div>
+        )}
 
         <div className="flex gap-3 justify-end">
           <Button onClick={onClose} variant="ghost">

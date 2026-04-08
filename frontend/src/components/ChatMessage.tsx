@@ -122,8 +122,9 @@ function AnsiOutput({ text }: { text: string }) {
   )
 }
 
-function ExecResult({ command, output, state, exitCode, closed, streamId, preliminary, sessionId, serverId, onAddSessionApproval }: {
+function ExecResult({ command, commandRegex, output, state, exitCode, closed, streamId, preliminary, sessionId, serverId, onAddSessionApproval }: {
   command: string
+  commandRegex?: string
   output?: string
   state: string
   exitCode?: number | null
@@ -228,7 +229,13 @@ function ExecResult({ command, output, state, exitCode, closed, streamId, prelim
         </div>
       )}
       {showApprovalDialog && (
-        <ApprovalDialog command={command} serverId={serverId} onClose={() => setShowApprovalDialog(false)} />
+        <ApprovalDialog
+          command={command}
+          serverId={serverId}
+          suggestedPattern={commandRegex}
+          suggestedIsRegex={!!commandRegex}
+          onClose={() => setShowApprovalDialog(false)}
+        />
       )}
     </div>
   )
@@ -253,6 +260,9 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
     const args = 'input' in part ? part.input : undefined
     const result = 'output' in part ? part.output : undefined
     const approval = 'approval' in part ? part.approval : undefined
+    const commandRegex = typeof (args as any)?.commandRegex === 'string' && (args as any).commandRegex.trim()
+      ? (args as any).commandRegex.trim()
+      : undefined
     const preliminary = part.state === 'output-available' && 'preliminary' in part
       ? (part as { state: 'output-available'; preliminary?: boolean }).preliminary
       : undefined
@@ -268,6 +278,7 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
           approvalId={approval.id}
           onApprove={onApproveToolCall}
           serverId={serverId}
+          commandRegex={commandRegex}
           onAddSessionApproval={onAddSessionApproval}
         />
       )
@@ -295,20 +306,21 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
       const exitCode = (result as any)?.exitCode
       const closed = (result as any)?.closed
       const streamId = (result as any)?.streamId
-      return (
-        <ExecResult
-          key={key}
-          command={command}
-          output={output}
-          state={state}
-          exitCode={exitCode}
-          closed={closed}
-          streamId={streamId}
-          preliminary={preliminary}
-          sessionId={sessionId}
-          serverId={serverId}
-          onAddSessionApproval={onAddSessionApproval}
-        />
+        return (
+          <ExecResult
+            key={key}
+            command={command}
+            output={output}
+            state={state}
+            exitCode={exitCode}
+            closed={closed}
+            streamId={streamId}
+            commandRegex={commandRegex}
+            preliminary={preliminary}
+            sessionId={sessionId}
+            serverId={serverId}
+            onAddSessionApproval={onAddSessionApproval}
+          />
       )
     }
 
@@ -413,12 +425,13 @@ export default function ChatMessage({ message, sessionId, serverId, onAddSession
   return <div className="space-y-2">{rendered}</div>
 }
 
-function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, onAddSessionApproval }: {
+function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, commandRegex, onAddSessionApproval }: {
   toolName: string
   command: string
   approvalId: string
   onApprove?: (approvalId: string, approved: boolean) => void
   serverId: number
+  commandRegex?: string
   onAddSessionApproval: (command: string) => void
 }) {
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
@@ -498,6 +511,8 @@ function ToolApprovalUI({ toolName, command, approvalId, onApprove, serverId, on
         <ApprovalDialog
           command={command}
           serverId={serverId}
+          suggestedPattern={commandRegex}
+          suggestedIsRegex={!!commandRegex}
           onClose={() => setShowApprovalDialog(false)}
         />
       )}
