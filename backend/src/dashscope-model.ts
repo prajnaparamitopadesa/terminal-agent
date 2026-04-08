@@ -75,6 +75,26 @@ type DashscopeChatRequest = {
   [key: string]: unknown;
 };
 
+function summarizeRequest(body: DashscopeChatRequest) {
+  return {
+    model: body.model,
+    stream: !!body.stream,
+    messageCount: body.messages.length,
+    toolNames: body.tools?.map(tool => tool.function.name) ?? [],
+    maxTokens: body.max_tokens,
+    temperature: body.temperature,
+    topP: body.top_p,
+  };
+}
+
+function logModelApi(event: string, details: Record<string, unknown>) {
+  console.log(`[llm-api] ${event} ${JSON.stringify(details)}`);
+}
+
+function truncateLogText(text: string, maxLength = 500) {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
 const dashscopeChatResponseSchema = z.object({
   id: z.string(),
   choices: z.array(
@@ -145,13 +165,19 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
     response?: { headers?: Record<string, string>; body?: string };
   }> {
     const { body, headers } = this.prepareRequest(options, false);
-    // console.log('DashscopeChatLanguageModel.doGenerate body:', JSON.stringify(body, null, 2));
+    logModelApi('request', summarizeRequest(body));
     const { responseHeaders, value: response } = await postJsonToApi({
       url: this.baseUrl + '/chat/completions',
       headers,
       body,
       failedResponseHandler: async ({ response, url, requestBodyValues }) => {
         const responseBody = await response.text();
+        logModelApi('request-failed', {
+          ...summarizeRequest(body),
+          statusCode: response.status,
+          url,
+          responseBody: truncateLogText(responseBody),
+        });
         return {
           value: new APICallError({
             message: `Dashscope API error: ${response.status} ${responseBody}`,
@@ -217,6 +243,13 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
       this.#usage.completionTokens += response.usage.completion_tokens;
     }
 
+    logModelApi('response', {
+      ...summarizeRequest(body),
+      promptTokens: response.usage?.prompt_tokens,
+      completionTokens: response.usage?.completion_tokens,
+      responseId: response.id,
+    });
+
     return {
       content,
       finishReason: mapFinishReason(choice.finish_reason),
@@ -245,13 +278,19 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
     response?: { headers?: Record<string, string> };
   }> {
     const { body, headers } = this.prepareRequest(options, true);
-    // console.log('DashscopeChatLanguageModel.doStream body:', JSON.stringify(body, null, 2));
+    logModelApi('stream-request', summarizeRequest(body));
     const { responseHeaders, value: stream } = await postJsonToApi({
       url: this.baseUrl + '/chat/completions',
       headers,
       body,
       failedResponseHandler: async ({ response, url, requestBodyValues }) => {
         const responseBody = await response.text();
+        logModelApi('stream-request-failed', {
+          ...summarizeRequest(body),
+          statusCode: response.status,
+          url,
+          responseBody: truncateLogText(responseBody),
+        });
         return {
           value: new APICallError({
             message: `Dashscope API error: ${response.status} ${responseBody}`,
@@ -293,8 +332,11 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
             controller.enqueue({ type: 'stream-start', warnings: [] });
           },
           transform: (chunk, controller) => {
-            // console.log('Dashscope stream chunk:', JSON.stringify(chunk));
             if (!chunk.success) {
+              logModelApi('stream-parse-error', {
+                ...summarizeRequest(body),
+                error: String(chunk.error),
+              });
               controller.enqueue({ type: 'error', error: chunk.error });
               return;
             }
@@ -391,6 +433,14 @@ export class DashscopeChatLanguageModel implements LanguageModelV3 {
               this.#usage.promptTokens += usage.prompt_tokens ?? 0;
               this.#usage.completionTokens += usage.completion_tokens ?? 0;
             }
+
+            logModelApi('stream-response', {
+              ...summarizeRequest(body),
+              responseId,
+              promptTokens: usage?.prompt_tokens,
+              completionTokens: usage?.completion_tokens,
+              finishReason: finishReason.raw ?? finishReason.unified,
+            });
 
             controller.enqueue({
               type: 'finish',
