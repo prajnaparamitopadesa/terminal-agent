@@ -355,7 +355,7 @@ Assistant: ^ssh(\\s+-\\S+)*\\s+\\S+@\\S+$`;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[convert-to-regex] failed:', message);
-      return new Response(JSON.stringify({ error: message }), {
+      return new Response(JSON.stringify({ error: '正则生成失败，请稍后重试' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });

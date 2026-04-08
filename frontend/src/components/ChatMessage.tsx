@@ -228,15 +228,15 @@ function ExecResult({ command, commandRegex, output, state, exitCode, closed, st
           执行中...
         </div>
       )}
-       {showApprovalDialog && (
-         <ApprovalDialog
-           command={command}
-           serverId={serverId}
-           suggestedPattern={commandRegex}
-           suggestedIsRegex={!!commandRegex}
-           onClose={() => setShowApprovalDialog(false)}
-         />
-       )}
+      {showApprovalDialog && (
+        <ApprovalDialog
+          command={command}
+          serverId={serverId}
+          suggestedPattern={commandRegex}
+          suggestedIsRegex={!!commandRegex}
+          onClose={() => setShowApprovalDialog(false)}
+        />
+      )}
     </div>
   )
 }

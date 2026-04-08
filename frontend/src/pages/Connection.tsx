@@ -73,9 +73,10 @@ function findPendingCommandApproval(messages: UIMessage[]) {
       if (part.state !== 'approval-requested' || (toolName !== 'exec' && toolName !== 'exec-stream')) {
         continue
       }
+      const input = part.input as Record<string, unknown> | undefined
       return {
         approvalId: part.approval.id,
-        command: typeof (part.input as any)?.command === 'string' ? (part.input as any).command : toolName,
+        command: typeof input?.command === 'string' ? input.command : toolName,
       }
     }
   }
@@ -106,7 +107,8 @@ function markPendingCommandApprovalAsDenied(messages: UIMessage[], approvalId: s
 
 export default function Connection() {
   const { serverId } = useParams()
-  const serverIdNumber = Number(serverId)
+  const parsedServerId = Number(serverId)
+  const serverIdNumber = Number.isFinite(parsedServerId) ? parsedServerId : 0
   const location = useLocation()
   const navigate = useNavigate()
   const [server, setServer] = useState<Server | undefined>(location.state?.server as Server | undefined)
@@ -287,7 +289,10 @@ export default function Connection() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ server_id: serverIdNumber, title: titleLine, messages: messagesJson }),
         })
-          .then(r => r.json())
+          .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`)
+            return r.json()
+          })
           .then(data => setConversationId(data.id))
           .catch(err => {
             logAgentEvent(`创建对话失败：${err instanceof Error ? err.message : String(err)}`, 'error')
@@ -315,6 +320,7 @@ export default function Connection() {
 
   const isLoading = status === 'submitted' || status === 'streaming'
   const pendingCommandApproval = useMemo(() => findPendingCommandApproval(messages), [messages])
+  const canReplaceApprovalWithMessage = !isLoading || !!pendingCommandApproval
 
   const handleChatSubmit = async () => {
     if (!input.trim()) return
@@ -400,7 +406,7 @@ export default function Connection() {
       setShowHistory(false)
       logAgentEvent(`已加载历史对话：${conv.title}`)
       if (normalized.interruptedCount > 0) {
-        logAgentEvent(`已将 ${normalized.interruptedCount} 个失效审批转换为中断结果`, 'error')
+        logAgentEvent(`已将 ${normalized.interruptedCount} 个失效审批转换为中断结果`)
         await fetch(`/api/conversations/${conv.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -685,8 +691,8 @@ export default function Connection() {
                   ref={textareaRef}
                   value={input}
                   onChange={setInput}
-                  onSubmit={handleChatSubmit}
-                  disabled={isLoading && !pendingCommandApproval}
+                  onSubmit={() => { void handleChatSubmit() }}
+                  disabled={!canReplaceApprovalWithMessage}
                   placeholder="向 AI 助手发送消息..."
                   onKeyDown={handleInputKeyDown}
                 >
@@ -707,7 +713,7 @@ export default function Connection() {
                       disabled={!input.trim()}
                       size="iconSm"
                       className="flex-shrink-0 mb-0.5"
-                      onClick={handleChatSubmit}
+                      onClick={() => { void handleChatSubmit() }}
                     >
                       <Send className="w-3.5 h-3.5" />
                     </Button>
